@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 430" width="1000" height="430" role="img" font-family="Helvetica, Arial, sans-serif"><title>A tree of small files and the packed tree</title><desc>A plain tree with thousands of files per leaf directory becomes one SQLite file per leaf; the file commands still see the plain tree.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#3b5563"/></marker></defs>
+<rect width="1000" height="430" fill="#ffffff"/>
+<rect x="20" y="20" width="300" height="340" rx="4" fill="#f6f0e2" stroke="#c0a15a" stroke-width="1.5"/>
+<text x="36" y="52" font-size="18" font-weight="700" fill="#153e51" text-anchor="start">Plain tree</text>
+<text x="36" y="92" font-size="15" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">photos/</text>
+<text x="60" y="126" font-size="15" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">0/0000/</text>
+<text x="84" y="160" font-size="15" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">a_320  b_320  c_1024</text>
+<text x="60" y="194" font-size="15" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">0/0001/</text>
+<text x="84" y="228" font-size="15" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">d_320  e_2048  ...</text>
+<text x="60" y="262" font-size="15" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">... 65,536 leaves</text>
+<text x="36" y="330" font-size="14" fill="#3b5563" text-anchor="start">Millions of files. Every one has</text>
+<text x="36" y="350" font-size="14" fill="#3b5563" text-anchor="start">an inode and a slack block.</text>
+<rect x="350" y="20" width="300" height="340" rx="4" fill="#eaf1f4" stroke="#7fa6b7" stroke-width="1.5"/>
+<text x="366" y="52" font-size="18" font-weight="700" fill="#153e51" text-anchor="start">On the disk</text>
+<text x="366" y="92" font-size="15" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">packed/</text>
+<text x="390" y="126" font-size="15" font-weight="700" fill="#075b82" text-anchor="start" font-family="Menlo, Consolas, monospace">0/0000.sqlar</text>
+<text x="390" y="160" font-size="15" font-weight="700" fill="#075b82" text-anchor="start" font-family="Menlo, Consolas, monospace">0/0001.sqlar</text>
+<text x="390" y="194" font-size="15" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">...</text>
+<text x="366" y="228" font-size="15" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">.packdir-state</text>
+<text x="366" y="262" font-size="15" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">.packdir-pending</text>
+<text x="366" y="330" font-size="14" fill="#3b5563" text-anchor="start">One SQLite file per leaf: bytes,</text>
+<text x="366" y="350" font-size="14" fill="#3b5563" text-anchor="start">hashes, times, in one transaction.</text>
+<rect x="680" y="20" width="300" height="340" rx="4" fill="#e8f2e6" stroke="#7fa877" stroke-width="1.5"/>
+<text x="696" y="52" font-size="18" font-weight="700" fill="#153e51" text-anchor="start">What the commands see</text>
+<text x="696" y="92" font-size="13" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">packdir ls packed/0/0000</text>
+<text x="696" y="126" font-size="13" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">packdir cat packed/0/0000/a_320</text>
+<text x="696" y="160" font-size="13" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">packdir cp -p x packed/0/0000/</text>
+<text x="696" y="194" font-size="13" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">packdir rm packed/0/0000/b_320</text>
+<text x="696" y="228" font-size="13" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">sqlite3 0000.sqlar -AxC out</text>
+<text x="696" y="330" font-size="14" fill="#3b5563" text-anchor="start">GNU options and output; stock</text>
+<text x="696" y="350" font-size="14" fill="#3b5563" text-anchor="start">sqlite3 extracts with no packdir.</text>
+<line x1="322" y1="190" x2="348" y2="190" stroke="#3b5563" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="652" y1="190" x2="678" y2="190" stroke="#3b5563" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="500" y="410" font-size="15" fill="#3b5563" text-anchor="middle">pack-tree goes one way, unpack-tree the other, and both keep exact bytes, modes and nanosecond times.</text>
+</svg>

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="author" content="Alexy Khrabrov, with Claude as co-author" />
+  <meta name="dcterms.date" content="2026-11-01" />
+  <meta name="description" content="A manual for packdir, which keeps directories of small files as SQLite archives you can still list, read, copy and remove like plain files, with SQLite or Turso, from Rust, OCaml and OxCaml." />
+  <title>Three builds, one behaviour</title>
+  <style>
+    div.sitenav { display: flex; flex-direction: row; flex-wrap: wrap; }
+    span.navlink { flex: 1; }
+    span.navlink-label { display: inline-block; min-width: 4em; }
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: 1.5em;}
+    div.column{flex: auto;}
+    @media screen {
+    div.columns{gap: min(4vw, 1.5em);}
+    div.column{overflow-x: auto;}
+    }
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+  </style>
+  <link rel="stylesheet" href="book.css" />
+</head>
+<body>
+<nav id="sitenav">
+<div class="sitenav">
+<span class="navlink">
+<span class="navlink-label">Up:</span> <a href="chapter-001.html" accesskey="u" rel="up">packdir</a>
+</span>
+<span class="navlink">
+<span class="navlink-label">Top:</span> <a href="index.html" accesskey="t" rel="top">packdir</a>
+</span>
+</div>
+<div class="sitenav">
+<span class="navlink">
+<span class="navlink-label">Next:</span> <a href="chapter-012.html" accesskey="n" rel="next">A use case: Semantic Unison</a>
+</span>
+<span class="navlink">
+<span class="navlink-label">Previous:</span> <a href="chapter-010.html" accesskey="p" rel="previous">Using packdir as a library</a>
+</span>
+</div>
+</nav>
+<h1 data-number="10" id="three-builds-one-behaviour"><span
+class="header-section-number">10</span> Three builds, one behaviour</h1>
+<p>“Equivalent” is easy to claim, so here is exactly how it is tested.
+The numbers below are the state of the suites on 2026-11-01.</p>
+<ul>
+<li><strong><code>test/controls.py</code></strong> (92 checks) packs a
+tree in the layout of a preview cache and checks incremental runs, a
+crash inside a transaction, corruption, plain directories beside
+containers, repack and unpack. It restores with stock
+<code>sqlite3</code> as well as packdir.</li>
+<li><strong><code>test/fileutils.py</code></strong> (58 checks) runs
+each file command on a packed tree, and GNU’s on the same tree unpacked,
+and compares output, exit codes and messages.</li>
+<li><strong><code>test/cross.py</code></strong> (452 checks) is the one
+that proves equivalence. Stock OCaml, OxCaml and Rust each pack a tree
+in each mode: SQLite, Turso, MVCC, and MVCC with writers. Every other
+build must then verify it, restore it exactly and carry on from its
+state with nothing to do. Stored tables must be the same in every
+combination, and the file commands must print the same. A crash in one
+build is recovered by another.</li>
+<li><strong><code>tests/matrix.rs</code> and
+<code>ocaml/test/matrix.ml</code></strong> in firstpair-tursolite test
+each engine and journal, the guards between them, and concurrent writers
+losing nothing, in both languages.</li>
+<li><strong><code>rust/tests/library.rs</code></strong> uses packdir as
+a Rust project would.</li>
+</ul>
+<p>The controls and file suites pass on all three builds, on both
+engines, and the controls also under MVCC with concurrent writers, where
+the three checks for the plain WAL variant do not apply.</p>
+<p>The suites found real differences on the way: the foreign-key default
+above, and SHA-256 speed, since the Rust crate’s hash was slower than
+the system’s on a CPU without SHA instructions, so on macOS Rust now
+uses the same system routine as OCaml. The shared
+<code>.packdir-state</code> also began as an OCaml-only binary format,
+which would have made every Rust run after an OCaml run start over.</p>
+<p>One difference remains. <strong>File names must be UTF-8 in the Rust
+build, and under Turso.</strong> The OCaml build on SQLite treats names
+as bytes. macOS file systems do not allow anything else, so this only
+matters on Linux, and Rust reports such a name as an error rather than
+skipping the file.</p>
+</body>
+</html>

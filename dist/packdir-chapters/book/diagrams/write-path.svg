@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 360" width="1000" height="360" role="img" font-family="Helvetica, Arial, sans-serif"><title>One container written</title><desc>Workers read and hash outside any lock. Transactions take turns under SQLite and overlap under Turso MVCC. A read-back precedes the barrier.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#3b5563"/></marker></defs>
+<rect width="1000" height="360" fill="#ffffff"/>
+<rect x="20" y="40" width="190" height="250" rx="4" fill="#f6f0e2" stroke="#c0a15a" stroke-width="1.5"/>
+<text x="36" y="72" font-size="17" font-weight="700" fill="#153e51" text-anchor="start">Plain tree</text>
+<text x="36" y="100" font-size="14" fill="#3b5563" text-anchor="start">read only</text>
+<text x="36" y="140" font-size="14" fill="#153e51" text-anchor="start">each file stat-ed</text>
+<text x="36" y="162" font-size="14" fill="#153e51" text-anchor="start">before and after</text>
+<text x="36" y="184" font-size="14" fill="#153e51" text-anchor="start">reading: a file that</text>
+<text x="36" y="206" font-size="14" fill="#153e51" text-anchor="start">changes is refused</text>
+<rect x="250" y="40" width="210" height="250" rx="4" fill="#eaf1f4" stroke="#7fa6b7" stroke-width="1.5"/>
+<text x="266" y="72" font-size="17" font-weight="700" fill="#153e51" text-anchor="start">Workers</text>
+<rect x="266" y="92" width="178" height="50" rx="4" fill="#ffffff" stroke="#7fa6b7" stroke-width="1.5"/>
+<text x="280" y="123" font-size="14" fill="#153e51" text-anchor="start">read, MD5, SHA-256</text>
+<rect x="266" y="154" width="178" height="50" rx="4" fill="#ffffff" stroke="#7fa6b7" stroke-width="1.5"/>
+<text x="280" y="185" font-size="14" fill="#153e51" text-anchor="start">read, MD5, SHA-256</text>
+<rect x="266" y="216" width="178" height="50" rx="4" fill="#ffffff" stroke="#7fa6b7" stroke-width="1.5"/>
+<text x="280" y="247" font-size="14" fill="#153e51" text-anchor="start">read, MD5, SHA-256</text>
+<rect x="500" y="40" width="220" height="250" rx="4" fill="#e8f2e6" stroke="#7fa877" stroke-width="1.5"/>
+<text x="516" y="72" font-size="17" font-weight="700" fill="#153e51" text-anchor="start">Transaction</text>
+<text x="516" y="104" font-size="14" fill="#153e51" text-anchor="start">SQLite: one writer per</text>
+<text x="516" y="126" font-size="14" fill="#153e51" text-anchor="start">disk, under a lock</text>
+<text x="516" y="164" font-size="14" fill="#153e51" text-anchor="start">Turso MVCC: no lock;</text>
+<text x="516" y="186" font-size="14" fill="#153e51" text-anchor="start">--writers overlap inside</text>
+<text x="516" y="208" font-size="14" fill="#153e51" text-anchor="start">one container</text>
+<text x="516" y="250" font-size="14" fill="#3b5563" text-anchor="start">epoch +1 each batch</text>
+<rect x="760" y="40" width="220" height="250" rx="4" fill="#f6f0e2" stroke="#c0a15a" stroke-width="1.5"/>
+<text x="776" y="72" font-size="17" font-weight="700" fill="#153e51" text-anchor="start">Kept</text>
+<text x="776" y="104" font-size="14" fill="#153e51" text-anchor="start">1. read back, SHA-256</text>
+<text x="776" y="136" font-size="14" fill="#153e51" text-anchor="start">2. fsync per commit</text>
+<text x="776" y="168" font-size="14" fill="#153e51" text-anchor="start">3. pending list, until</text>
+<text x="776" y="190" font-size="14" fill="#153e51" text-anchor="start">4. F_FULLFSYNC barrier</text>
+<text x="776" y="212" font-size="14" fill="#153e51" text-anchor="start">    every few GiB</text>
+<text x="776" y="250" font-size="14" fill="#153e51" text-anchor="start">5. state saved</text>
+<line x1="212" y1="165" x2="248" y2="165" stroke="#3b5563" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="462" y1="165" x2="498" y2="165" stroke="#3b5563" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="722" y1="165" x2="758" y2="165" stroke="#3b5563" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="500" y="332" font-size="15" fill="#3b5563" text-anchor="middle">A container counts as kept only once a barrier covers it; until then the next run verifies it.</text>
+</svg>

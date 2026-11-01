@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="author" content="Alexy Khrabrov, with Claude as co-author" />
+  <meta name="dcterms.date" content="2026-11-01" />
+  <meta name="description" content="A manual for packdir, which keeps directories of small files as SQLite archives you can still list, read, copy and remove like plain files, with SQLite or Turso, from Rust, OCaml and OxCaml." />
+  <title>SQLite and Turso</title>
+  <style>
+    div.sitenav { display: flex; flex-direction: row; flex-wrap: wrap; }
+    span.navlink { flex: 1; }
+    span.navlink-label { display: inline-block; min-width: 4em; }
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: 1.5em;}
+    div.column{flex: auto;}
+    @media screen {
+    div.columns{gap: min(4vw, 1.5em);}
+    div.column{overflow-x: auto;}
+    }
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+  </style>
+  <link rel="stylesheet" href="book.css" />
+</head>
+<body>
+<nav id="sitenav">
+<div class="sitenav">
+<span class="navlink">
+<span class="navlink-label">Up:</span> <a href="chapter-001.html" accesskey="u" rel="up">packdir</a>
+</span>
+<span class="navlink">
+<span class="navlink-label">Top:</span> <a href="index.html" accesskey="t" rel="top">packdir</a>
+</span>
+</div>
+<div class="sitenav">
+<span class="navlink">
+<span class="navlink-label">Next:</span> <a href="chapter-008.html" accesskey="n" rel="next">Concurrency</a>
+</span>
+<span class="navlink">
+<span class="navlink-label">Previous:</span> <a href="chapter-006.html" accesskey="p" rel="previous">The container format</a>
+</span>
+</div>
+</nav>
+<h1 data-number="6" id="sqlite-and-turso"><span
+class="header-section-number">6</span> SQLite and Turso</h1>
+<p>packdir stores containers with one of two engines, chosen per run.
+They offer different things:</p>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th></th>
+<th>SQLite</th>
+<th>Turso</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>What it is</td>
+<td>The standard embedded database</td>
+<td>A Rust rewrite of SQLite, in process</td>
+</tr>
+<tr>
+<td>Maturity</td>
+<td>Decades of production use</td>
+<td>Young; moving quickly</td>
+</tr>
+<tr>
+<td>Journal</td>
+<td>Rollback journal or WAL</td>
+<td>WAL, or its own MVCC log</td>
+</tr>
+<tr>
+<td>Writers in one file</td>
+<td>One at a time</td>
+<td>With MVCC, overlapping transactions</td>
+</tr>
+<tr>
+<td>Auto-vacuum</td>
+<td>Yes</td>
+<td>Experimental, and not safe here</td>
+</tr>
+<tr>
+<td>Stock tools read its files</td>
+<td>Yes</td>
+<td>After sealing, yes</td>
+</tr>
+</tbody>
+</table>
+<p>Turso reads and writes SQLite’s file format, but not every file in
+every state, and the differences have consequences. Each rule below came
+from testing Turso 0.8.3 against stock SQLite, and firstpair-tursolite
+enforces them when a file is opened, for every caller.</p>
+<figure>
+<img src="book/diagrams/engines.svg"
+alt="Which engine may open which file." />
+<figcaption aria-hidden="true">Which engine may open which
+file.</figcaption>
+</figure>
+<p><strong>Turso does not write a file with auto-vacuum.</strong>
+Without the experimental flag it opens such a file read-only. With the
+flag, it wrote, and stock SQLite’s <code>PRAGMA integrity_check</code>
+then reported freelist and pointer-map failures on the result (measured
+on 0.8.2 and 0.8.3). Turso under MVCC refused outright, though not
+before changing the header. So packdir refuses. A write to such a
+container with Turso stops with an error and changes nothing. Reads fall
+to SQLite, and <code>repack --engine turso</code> rebuilds a container
+without auto-vacuum, keeping every member.</p>
+<p><strong>SQLite cannot open a file left in MVCC mode.</strong> MVCC
+sets header bytes 18 and 19 to 255, and stock SQLite reports “file is
+not a database”. So every file Turso writes is <strong>sealed</strong>
+when it closes.</p>
+<p><strong>Turso has no rollback journal.</strong> It ignores
+<code>journal_mode = DELETE</code>. So a Turso write works in WAL or
+MVCC, and sealing puts the standard form back.</p>
+<p><strong>Opening a standard file with Turso changes its
+bytes</strong>, because Turso turns the header to WAL on open. A
+read-only open does not. packdir opens with Turso read-only whenever it
+is only reading.</p>
+<h2 data-number="6.1" id="sealing"><span
+class="header-section-number">6.1</span> Sealing</h2>
+<figure>
+<img src="book/diagrams/seal.svg"
+alt="The life of a file Turso writes." />
+<figcaption aria-hidden="true">The life of a file Turso
+writes.</figcaption>
+</figure>
+<p>Closing a container Turso wrote takes four steps: checkpoint, leave
+MVCC, checkpoint again, and let SQLite return the file to a rollback
+journal. The empty <code>-wal</code> and <code>.db-log</code> files are
+removed. A companion with content in it is an error, because it may hold
+commits. So after a clean run a Turso container is a standard SQLite
+file, apart from having no auto-vacuum, and <code>sqlite3 -Ax</code>
+reads it like any other.</p>
+<p>A crash leaves the file unsealed. That is safe, because Turso
+recovers from its log the next time the file is opened, and closing it
+seals it. Until then only Turso can open it, so a build without Turso
+says it needs Turso.</p>
+</body>
+</html>

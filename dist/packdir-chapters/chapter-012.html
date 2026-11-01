@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="author" content="Alexy Khrabrov, with Claude as co-author" />
+  <meta name="dcterms.date" content="2026-11-01" />
+  <meta name="description" content="A manual for packdir, which keeps directories of small files as SQLite archives you can still list, read, copy and remove like plain files, with SQLite or Turso, from Rust, OCaml and OxCaml." />
+  <title>A use case: Semantic Unison</title>
+  <style>
+    div.sitenav { display: flex; flex-direction: row; flex-wrap: wrap; }
+    span.navlink { flex: 1; }
+    span.navlink-label { display: inline-block; min-width: 4em; }
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: 1.5em;}
+    div.column{flex: auto;}
+    @media screen {
+    div.columns{gap: min(4vw, 1.5em);}
+    div.column{overflow-x: auto;}
+    }
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+  </style>
+  <link rel="stylesheet" href="book.css" />
+</head>
+<body>
+<nav id="sitenav">
+<div class="sitenav">
+<span class="navlink">
+<span class="navlink-label">Up:</span> <a href="chapter-001.html" accesskey="u" rel="up">packdir</a>
+</span>
+<span class="navlink">
+<span class="navlink-label">Top:</span> <a href="index.html" accesskey="t" rel="top">packdir</a>
+</span>
+</div>
+<div class="sitenav">
+<span class="navlink">
+<span class="navlink-label">Next:</span> <a href="chapter-013.html" accesskey="n" rel="next">Limits</a>
+</span>
+<span class="navlink">
+<span class="navlink-label">Previous:</span> <a href="chapter-011.html" accesskey="p" rel="previous">Three builds, one behaviour</a>
+</span>
+</div>
+</nav>
+<h1 data-number="11" id="a-use-case-semantic-unison"><span
+class="header-section-number">11</span> A use case: Semantic Unison</h1>
+<p>packdir began as part of <a
+href="https://github.com/querygraph/semantic-unison">Semantic
+Unison</a>, a fork of the Unison file synchronizer. The problem was a
+photo catalog’s preview cache: 3.6 million small files and about 4.5 TB,
+to be mirrored onto a spinning HFS+ disk. HFS+ has no clones, so copying
+every small file meant writing every one, and each later comparison
+would have to walk them all.</p>
+<p>Semantic Unison’s <strong>packed roots</strong> use packdir as a
+library, and its <code>unison-packdir</code> command is packdir under
+another name. To Unison, a container looks like the directory it
+replaces: three hooks answer <code>stat</code>, directory listing and
+fingerprint from the member table, so update detection needs no change,
+and files are stored as members rather than copied into a temporary and
+renamed. Its archive plays the part <code>.packdir-state</code> plays
+here. The tree becomes 65,536 containers, 4,096 under each of its 16
+top-level directories, averaging about 72 MiB. Files that must stay
+plain sit beside their containers untouched.</p>
+<p>On a 50 GiB test set on that disk, Unison packed the tree in 424 s
+against 337 s for copying plain files with an empty target, and a rerun
+with nothing to do took 3.2 s. So packing cost about a quarter more on
+the first run, and it paid for itself in every run after that. Those
+runs used SQLite, whose writer lock suits one spinning disk.
+<strong>Unknown:</strong> the full mirror’s total time. It was still
+running as this was written, at 100 to 135 MB/s.</p>
+<p>That run is also where the note on fork came from. The mirror slowed
+by a quarter part way through, and the profile showed workers marking a
+heap they had inherited and would never use. packdir’s design decisions
+held. The cost was in how it was being called.</p>
+<p>Nothing in packdir needs Unison. The dependence runs the other
+way.</p>
+</body>
+</html>

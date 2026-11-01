@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="author" content="Alexy Khrabrov, with Claude as co-author" />
+  <meta name="dcterms.date" content="2026-11-01" />
+  <meta name="description" content="A manual for packdir, which keeps directories of small files as SQLite archives you can still list, read, copy and remove like plain files, with SQLite or Turso, from Rust, OCaml and OxCaml." />
+  <title>What packdir is</title>
+  <style>
+    div.sitenav { display: flex; flex-direction: row; flex-wrap: wrap; }
+    span.navlink { flex: 1; }
+    span.navlink-label { display: inline-block; min-width: 4em; }
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: 1.5em;}
+    div.column{flex: auto;}
+    @media screen {
+    div.columns{gap: min(4vw, 1.5em);}
+    div.column{overflow-x: auto;}
+    }
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+  </style>
+  <link rel="stylesheet" href="book.css" />
+</head>
+<body>
+<nav id="sitenav">
+<div class="sitenav">
+<span class="navlink">
+<span class="navlink-label">Up:</span> <a href="chapter-001.html" accesskey="u" rel="up">packdir</a>
+</span>
+<span class="navlink">
+<span class="navlink-label">Top:</span> <a href="index.html" accesskey="t" rel="top">packdir</a>
+</span>
+</div>
+<div class="sitenav">
+<span class="navlink">
+<span class="navlink-label">Next:</span> <a href="chapter-004.html" accesskey="n" rel="next">Getting started</a>
+</span>
+<span class="navlink">
+<span class="navlink-label">Previous:</span> <a href="chapter-002.html" accesskey="p" rel="previous">About this manual</a>
+</span>
+</div>
+</nav>
+<h1 data-number="2" id="what-packdir-is"><span
+class="header-section-number">2</span> What packdir is</h1>
+<p>A directory of small files is an expensive thing to keep. Every file
+costs an inode, a directory entry and a partly used disk block. Copying
+a million of them means a million opens, and on a spinning disk a
+million seeks. Backups, synchronizers and <code>rm -r</code> all pay
+that price again, however little the data has changed.</p>
+<p>The usual answer is an archive, and the usual price of an archive is
+that you can no longer use the files. A <code>tar</code> file has no
+index and cannot change in place. A zip file can be read at random, but
+updating one rewrites the central directory, and nothing commits
+atomically.</p>
+<p>packdir keeps the files of a directory <code>D</code> as members of
+one SQLite archive, <code>D.sqlar</code>. That gives you the
+following:</p>
+<ul>
+<li><strong>Fewer files.</strong> A tree of millions of small files
+becomes a few thousand files on disk, at a depth you choose.</li>
+<li><strong>Plain use.</strong> <code>packdir ls</code>,
+<code>cat</code>, <code>stat</code>, <code>du</code>, <code>find</code>,
+<code>rm</code>, <code>cp</code>, <code>mv</code> and <code>mkdir</code>
+treat a packed tree as ordinary files, with GNU’s options and GNU’s
+output.</li>
+<li><strong>In-place updates.</strong> Changing one member is one
+transaction. The rest of the container is not rewritten.</li>
+<li><strong>Whole-file safety.</strong> Each batch commits or does not.
+Every member has a SHA-256, read back after writing.</li>
+<li><strong>Standard format.</strong>
+<code>sqlite3 D.sqlar -AxC D</code> extracts the files with no packdir
+installed.</li>
+</ul>
+<figure>
+<img src="book/diagrams/packed-tree.svg"
+alt="A plain tree, the packed tree on disk, and what the commands see." />
+<figcaption aria-hidden="true">A plain tree, the packed tree on disk,
+and what the commands see.</figcaption>
+</figure>
+<p>packdir comes in two builds that behave the same: one in OCaml, which
+also builds with OxCaml, and one in Rust. Each can be used as a command
+or as a library. Each stores containers with either of two engines,
+SQLite or Turso. Containers written by any combination can be read by
+any other, and stock <code>sqlite3</code> can read them all.</p>
+<h2 data-number="2.1" id="when-to-use-it"><span
+class="header-section-number">2.1</span> When to use it</h2>
+<p>packdir suits data that is many small files, read whole, and rarely
+rewritten: preview and thumbnail caches, image tiles, document
+collections, build outputs and scraped pages. It suits slow disks and
+old file systems especially, because small-file overhead hurts most
+there.</p>
+<p>It does not suit files a program must open directly with ordinary
+system calls, because a member has no path the kernel can see. It does
+not suit large files either: a member is held in memory while it is
+stored. It offers no compression, by design: <code>sz</code> always
+equals the length of <code>data</code>, which keeps the format simple
+and is the right choice for already compressed data such as JPEG.</p>
+</body>
+</html>
