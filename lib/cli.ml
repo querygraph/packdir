@@ -1,28 +1,33 @@
 (* The packdir command line, shared by packdir and unison-packdir.
 
      packdir pack-tree ROOT OUT [--depth N] [--workers N] [--wal] [--batch-mib M]
+                                [--engine sqlite|turso] [--mvcc] [--writers N]
        keep every directory N levels under ROOT (default 2, the preview leaves
        <H>/<HHHH>) as OUT/<rel>.sqlar; N workers read and hash containers in
        parallel, one writes at a time; a rerun stores only new and changed
-       files and marks the vanished ones retained
+       files and marks the vanished ones retained. --engine turso writes with
+       Turso; --mvcc takes off the writer lock between containers, and --writers
+       writes the batches of one container concurrently
      packdir list C.sqlar
      packdir verify C.sqlar...
      packdir restore C.sqlar OUT_DIR [--skip-retained]
      packdir unpack-tree OUT DEST [--skip-retained]
        every container under OUT back to a plain tree under DEST
-     packdir repack C.sqlar... [--drop-retained]
-       rebuild containers compactly, verified before they replace the old ones *)
+     packdir repack C.sqlar... [--drop-retained] [--engine sqlite|turso]
+       rebuild containers compactly, verified before they replace the old ones;
+       --engine turso gives a container made by SQLite the form Turso can write *)
 
 let prog () = Filename.basename Sys.argv.(0)
 
 let usage () =
   prerr_endline "usage: packdir pack-tree ROOT OUT [--depth N] [--workers N] [--wal] [--batch-mib M]\n\
+                \                 [--engine sqlite|turso] [--mvcc] [--writers N]\n\
                 \       packdir list C.sqlar\n\
                 \       packdir verify C.sqlar...\n\
                 \       packdir restore C.sqlar OUT_DIR [--skip-retained]\n\
                 \       packdir unpack-tree OUT DEST [--skip-retained]\n\
-                \       packdir repack C.sqlar... [--drop-retained]\n\
-                \       packdir ls|cat|stat|du|find|rm|cp|mv [GNU options] PATH...";
+                \       packdir repack C.sqlar... [--drop-retained] [--engine sqlite|turso]\n\
+                \       packdir ls|cat|stat|du|find|rm|cp|mv|mkdir [GNU options] PATH...";
   exit 2
 
 let rec dirs_at depth root rel =
@@ -46,15 +51,64 @@ let with_lock fd f =
   Fun.protect ~finally:(fun () -> Unix.lockf fd Unix.F_ULOCK 0) f
 
 (* OUT/.packdir-state: for each container, its file's (inode, size, mtime)
-   after the last run and its members then. A prototype's stand-in for
-   Unison's archive; losing it only costs a full re-read. *)
+   after the last run and its members then. A stand-in for Unison's archive,
+   in a text form the Rust build shares; losing it, or an older form, only
+   costs a full re-read.
+     packdir-state/1
+     C <rel> <ino> <size> <mtime>
+     M <name> <size> <mtime_ns> <fp hex> <fpalg> <sha256> <0|1>
+   with tabs between fields and % escaping % tab newline in names. *)
 let state_file out = Filename.concat out ".packdir-state"
+let state_magic = "packdir-state/1"
+
+let escape s =
+  let b = Buffer.create (String.length s) in
+  String.iter (function
+    | '%' -> Buffer.add_string b "%25" | '\t' -> Buffer.add_string b "%09"
+    | '\n' -> Buffer.add_string b "%0A" | c -> Buffer.add_char b c) s;
+  Buffer.contents b
+
+let unescape s =
+  let b = Buffer.create (String.length s) and i = ref 0 and n = String.length s in
+  while !i < n do
+    if s.[!i] = '%' && !i + 2 < n then begin
+      Buffer.add_char b (Char.chr (int_of_string ("0x" ^ String.sub s (!i + 1) 2))); i := !i + 3
+    end else (Buffer.add_char b s.[!i]; incr i)
+  done;
+  Buffer.contents b
+
 let load_state out : (string, (int64 * int64 * int64) * Container.member list) Hashtbl.t =
-  try In_channel.with_open_bin (state_file out) (fun ic -> Marshal.from_channel ic)
-  with Sys_error _ | End_of_file | Failure _ -> Hashtbl.create 1024
+  let t = Hashtbl.create 1024 in
+  (try
+     match In_channel.with_open_bin (state_file out) In_channel.input_lines with
+     | magic :: lines when magic = state_magic ->
+         let current = ref None in
+         let finish () = Option.iter (fun (rel, st, ms) -> Hashtbl.replace t rel (st, List.rev ms)) !current in
+         List.iter (fun line ->
+           match String.split_on_char '\t' line with
+           | ["C"; rel; ino; size; mtime] ->
+               finish ();
+               current := Some (unescape rel, (Int64.of_string ino, Int64.of_string size, Int64.of_string mtime), [])
+           | ["M"; name; size; mtime_ns; fp; fpalg; sha256; retained] ->
+               let m = { Container.name = unescape name; size = Int64.of_string size; mtime_ns = Int64.of_string mtime_ns;
+                         fp = Digest.from_hex fp; fpalg; sha256; retained = retained = "1" } in
+               current := Option.map (fun (rel, st, ms) -> rel, st, m :: ms) !current
+           | _ -> failwith "bad state line") lines;
+         finish ()
+     | _ -> ()
+   with Sys_error _ | End_of_file | Failure _ | Invalid_argument _ -> Hashtbl.reset t);
+  t
+
 let save_state out state =
   let temp = state_file out ^ ".tmp" in
-  Out_channel.with_open_bin temp (fun oc -> Marshal.to_channel oc state []);
+  Out_channel.with_open_bin temp (fun oc ->
+    output_string oc (state_magic ^ "\n");
+    List.iter (fun (rel, ((ino, size, mtime), members)) ->
+      Printf.fprintf oc "C\t%s\t%Ld\t%Ld\t%Ld\n" (escape rel) ino size mtime;
+      List.iter (fun (m : Container.member) ->
+        Printf.fprintf oc "M\t%s\t%Ld\t%Ld\t%s\t%s\t%s\t%d\n" (escape m.name) m.size m.mtime_ns
+          (Digest.to_hex m.fp) m.fpalg m.sha256 (if m.retained then 1 else 0)) members)
+      (List.sort compare (Hashtbl.fold (fun k v acc -> (k, v) :: acc) state [])));
   Sys.rename temp (state_file out)
 
 (* OUT/.packdir-pending: containers written since the last barrier. Each is
@@ -75,7 +129,7 @@ let clear_pending out =
   Out_channel.with_open_bin (pending_file out ^ ".tmp") (fun _ -> ());
   Sys.rename (pending_file out ^ ".tmp") (pending_file out)
 
-let pack_tree root out ~depth ~journal ~batch_bytes ~workers ~barrier_bytes =
+let pack_tree root out ~depth ~journal ~engine ~batch_bytes ~workers ~writers ~barrier_bytes =
   let t0 = Unix.gettimeofday () in
   let state = load_state out in
   let suspect = load_pending out in
@@ -84,6 +138,8 @@ let pack_tree root out ~depth ~journal ~batch_bytes ~workers ~barrier_bytes =
   let opened = ref 0 and scan_seconds = ref 0. in
   let fd = lock_file out in
   let write_lock f = with_lock fd f in
+  (* MVCC writes containers side by side; everything else takes turns. *)
+  let txn_lock = if journal = Container.Mvcc then (fun f -> f ()) else write_lock in
   let one rel =
     let target = Filename.concat out rel ^ ".sqlar" in
     (* A plain directory beside the container is pre-existing content, never
@@ -126,7 +182,7 @@ let pack_tree root out ~depth ~journal ~batch_bytes ~workers ~barrier_bytes =
     else begin
         incr opened;
         if suspicious then begin
-          let problems = let c = Container.open_ ~journal target in
+          let problems = let c = Container.open_ ~journal ~engine target in
             Fun.protect ~finally:(fun () -> Container.close c) (fun () -> Container.verify c) in
           if problems <> [] then begin
             (* Never deleted: set aside, and the leaf packed again from the plain side. *)
@@ -136,9 +192,9 @@ let pack_tree root out ~depth ~journal ~batch_bytes ~workers ~barrier_bytes =
           end
         end;
         write_lock (fun () -> add_pending out rel);
-        let c = write_lock (fun () -> Native.mkdir_p (Filename.dirname target); Container.open_ ~journal target) in
+        let c = write_lock (fun () -> Native.mkdir_p (Filename.dirname target); Container.open_ ~journal ~engine target) in
         let result, members = Fun.protect ~finally:(fun () -> Container.close c) (fun () ->
-          let r = Container.update ~batch_bytes ~write_lock ~skip c src in r, Container.members c) in
+          let r = Container.update ~batch_bytes ~write_lock:txn_lock ~writers ~skip c src in r, Container.members c) in
         let _, _, b = result in
         since_barrier := !since_barrier + b;
         if !since_barrier >= barrier_bytes then write_lock barrier;
@@ -207,28 +263,32 @@ let main () =
   let flag f = List.mem f args in
   let value f d = let rec go = function a :: v :: _ when a = f -> v | _ :: r -> go r | [] -> d in go args in
   let pos = let rec go = function
-      | [] -> [] | ("--depth" | "--batch-mib" | "--workers" | "--barrier-gib") :: _ :: r -> go r
+      | [] -> [] | ("--depth" | "--batch-mib" | "--workers" | "--barrier-gib" | "--engine" | "--writers") :: _ :: r -> go r
       | a :: r when String.length a > 2 && String.sub a 0 2 = "--" -> go r | a :: r -> a :: go r in go args in
+  let engine = match value "--engine" "" with "" -> Container.default_engine () | e -> Tursolite.parse_engine e in
+  let open_read path = Container.open_ ~create:false ~read_only:true ~engine path in
   try match pos with
     | ["pack-tree"; root; out] ->
         pack_tree root out ~depth:(int_of_string (value "--depth" "2"))
-          ~journal:(if flag "--wal" then Container.Wal else Container.Delete)
+          ~journal:(if flag "--mvcc" then Container.Mvcc else if flag "--wal" then Container.Wal else Container.Delete)
+          ~engine:(if flag "--mvcc" then Tursolite.Turso else engine)
+          ~writers:(int_of_string (value "--writers" "1"))
           ~batch_bytes:(int_of_string (value "--batch-mib" "256") * 1048576)
           ~workers:(int_of_string (value "--workers" "1"))
           ~barrier_bytes:(int_of_string (value "--barrier-gib" "4") * 1073741824)
     | ["list"; path] ->
-        let c = Container.open_ ~create:false path in
+        let c = open_read path in
         List.iter (fun (m : Container.member) ->
           Printf.printf "%s\t%Ld\t%Ld\t%s%s\n" m.name m.size m.mtime_ns (m.sha256)
             (if m.retained then "\tretained" else "")) (Container.members c);
         Container.close c
     | "verify" :: (_ :: _ as paths) ->
         let bad = List.fold_left (fun bad p ->
-          let c = Container.open_ ~create:false p in
+          let c = open_read p in
           let problems = Container.verify c in
           Container.close c;
           List.iter (fun e -> Printf.printf "%s: %s\n" p e) problems;
-          if problems = [] then Printf.printf "%s: ok, %d members\n" p (let c = Container.open_ ~create:false p in Fun.protect ~finally:(fun () -> Container.close c) (fun () -> List.length (Container.members c)));
+          if problems = [] then Printf.printf "%s: ok, %d members\n" p (let c = open_read p in Fun.protect ~finally:(fun () -> Container.close c) (fun () -> List.length (Container.members c)));
           bad + List.length problems) 0 paths in
         if bad > 0 then exit 1
     | ["unpack-tree"; out; dest] ->
@@ -245,7 +305,7 @@ let main () =
         let found = containers out "" in
         let files = ref 0 in
         List.iter (fun rel ->
-          let c = Container.open_ ~create:false (Filename.concat out rel ^ ".sqlar") in
+          let c = open_read (Filename.concat out rel ^ ".sqlar") in
           Fun.protect ~finally:(fun () -> Container.close c) (fun () ->
             Container.restore ~skip_retained:(flag "--skip-retained") c (Filename.concat dest rel);
             files := !files + List.length (List.filter (fun (m : Container.member) ->
@@ -253,10 +313,10 @@ let main () =
         Printf.printf "{\"containers\": %d, \"files\": %d}\n" (List.length found) !files
     | "repack" :: (_ :: _ as paths) ->
         List.iter (fun p ->
-          let kept, before, after = Container.repack ~drop_retained:(flag "--drop-retained") p in
+          let kept, before, after = Container.repack ~drop_retained:(flag "--drop-retained") ~engine p in
           Printf.printf "%s: %d members, %Ld -> %Ld bytes\n" p kept before after) paths
     | ["restore"; path; out] ->
-        let c = Container.open_ ~create:false path in
+        let c = open_read path in
         Fun.protect ~finally:(fun () -> Container.close c) (fun () ->
           Container.restore ~skip_retained:(flag "--skip-retained") c out)
     | _ -> usage ()

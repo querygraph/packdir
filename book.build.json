@@ -1,0 +1,40 @@
+{
+  "$schema": "https://firstpair.org/schemas/book.build.schema.json",
+  "schemaVersion": 1,
+  "bookRoot": "docs/book",
+  "manuscript": "docs/packdir-manual.md",
+  "metadata": "docs/book/metadata.yaml",
+  "cover": "docs/book/cover.md",
+  "css": "docs/book/reader.css",
+  "stem": "packdir",
+  "version": { "source": "literal", "value": "1.0.0" },
+  "edition": "full",
+  "dist": "dist",
+  "buildDir": "build/book",
+  "primaryFormat": "typst",
+  "mobi": false,
+  "headboardImage": "cover/packdir-headboard.png",
+  "environment": { "PACKDIR_REPO_ROOT": "${repoRoot}" },
+  "pandoc": {
+    "reader": "markdown+smart",
+    "toc": true,
+    "tocDepth": 2,
+    "numberSections": false,
+    "resourcePaths": ["docs", "."],
+    "commonArgs": ["--lua-filter", "${repoRoot}/docs/book/source-links.lua"]
+  },
+  "pdf": {
+    "coverImage": "cover/packdir-cover.png",
+    "coverWidth": "7.3333in",
+    "coverHeight": "11in",
+    "coverFit": "contain",
+    "includeInHeader": ["docs/book/pdf-layout.typ"],
+    "variables": { "papersize": "us-letter", "fontsize": "10pt", "page-numbering": "1" }
+  },
+  "epub": {
+    "coverImage": "cover/packdir-cover.png",
+    "titlePage": true,
+    "imprint": { "publisher": "First Pair Press", "publisherUrl": "https://firstpair.press" }
+  },
+  "html": { "splitLevel": 1, "luaFilter": "docs/book/source-links.lua" }
+}

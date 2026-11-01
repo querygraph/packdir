@@ -1,0 +1,11 @@
+title: packdir
+subtitle: Small files in one SQLite archive, with GNU coreutils on .sqlar
+author: Alexy Khrabrov, with Claude as co-author
+language: en-US
+lang: en-US
+publisher: First Pair Press
+rights: Copyright 2026 Alexy Khrabrov. packdir and firstpair-tursolite are licensed under the Apache License 2.0.
+title_stem: packdir
+cover_image: cover/packdir-cover.png
+headboard_image: cover/packdir-headboard.png
+description: A manual for packdir, which keeps directories of small files as SQLite archives you can still list, read, copy and remove like plain files, with SQLite or Turso, from Rust, OCaml and OxCaml.

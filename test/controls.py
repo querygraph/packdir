@@ -10,6 +10,7 @@ import argparse, hashlib, json, os, pathlib, random, shutil, sqlite3, subprocess
 
 p = argparse.ArgumentParser()
 p.add_argument('--packdir', required=True, help='packdir binary (lib main.exe)')
+p.add_argument('--pack-args', default='', help='extra pack-tree options, e.g. "--engine turso --mvcc"')
 a = p.parse_args()
 
 checks = 0
@@ -20,6 +21,7 @@ def check(ok, message):
     checks += 1
 
 def tool(*args, rc=0, env=None):
+    args = [*args, *(a.pack_args.split() if args[0] == 'pack-tree' else [])]
     r = subprocess.run([a.packdir, *map(str, args)], capture_output=True, text=True, env=env)
     check(r.returncode == rc, '%s exited %d (want %d):\n%s%s' % (args[0], r.returncode, rc, r.stdout, r.stderr))
     return r.stdout
@@ -179,8 +181,9 @@ with tempfile.TemporaryDirectory(prefix='packdir-') as td:
     check((out / '0/0000.sqlar.repack').read_bytes() == b'left by an interrupted repack', 'a leftover .repack is refused, not overwritten')
 
     # WAL variant, for the benchmark: same contents, restored the same way.
-    wal = t / 'wal'
-    tool('pack-tree', src, wal, '--wal')
-    check('ok' in tool('verify', *sorted(wal.glob('*/*.sqlar'))), 'WAL containers verify')
+    if '--mvcc' not in a.pack_args:
+        wal = t / 'wal'
+        tool('pack-tree', src, wal, '--wal')
+        check('ok' in tool('verify', *sorted(wal.glob('*/*.sqlar'))), 'WAL containers verify')
 
 print('PASS%d packdir controls' % checks)

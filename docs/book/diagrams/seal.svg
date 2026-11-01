@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 300" width="1000" height="300" role="img" font-family="Helvetica, Arial, sans-serif"><title>The life of a file Turso writes</title><desc>A file enters MVCC, takes concurrent transactions, is checkpointed, returns to WAL, and SQLite returns it to a rollback journal; a crash leaves it in MVCC until the next open.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#3b5563"/></marker></defs>
+<rect width="1000" height="300" fill="#ffffff"/>
+<rect x="20" y="40" width="168" height="150" rx="4" fill="#eaf1f4" stroke="#7fa6b7" stroke-width="1.5"/>
+<text x="34" y="72" font-size="16" font-weight="700" fill="#153e51" text-anchor="start">Open</text>
+<text x="34" y="102" font-size="12.5" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">PRAGMA journal_mode</text>
+<text x="34" y="122" font-size="12.5" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">= mvcc</text>
+<text x="34" y="164" font-size="13" fill="#3b5563" text-anchor="start">header 255 255</text>
+<line x1="190" y1="115" x2="212" y2="115" stroke="#3b5563" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="216" y="40" width="168" height="150" rx="4" fill="#eaf1f4" stroke="#7fa6b7" stroke-width="1.5"/>
+<text x="230" y="72" font-size="16" font-weight="700" fill="#153e51" text-anchor="start">Write</text>
+<text x="230" y="102" font-size="12.5" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">BEGIN CONCURRENT</text>
+<text x="230" y="122" font-size="12.5" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">one connection each</text>
+<text x="230" y="164" font-size="13" fill="#3b5563" text-anchor="start">.db-log grows</text>
+<line x1="386" y1="115" x2="408" y2="115" stroke="#3b5563" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="412" y="40" width="168" height="150" rx="4" fill="#e8f2e6" stroke="#7fa877" stroke-width="1.5"/>
+<text x="426" y="72" font-size="16" font-weight="700" fill="#153e51" text-anchor="start">Checkpoint</text>
+<text x="426" y="102" font-size="12.5" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">wal_checkpoint</text>
+<text x="426" y="122" font-size="12.5" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">(TRUNCATE)</text>
+<text x="426" y="164" font-size="13" fill="#3b5563" text-anchor="start">all in the main file</text>
+<line x1="582" y1="115" x2="604" y2="115" stroke="#3b5563" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="608" y="40" width="168" height="150" rx="4" fill="#e8f2e6" stroke="#7fa877" stroke-width="1.5"/>
+<text x="622" y="72" font-size="16" font-weight="700" fill="#153e51" text-anchor="start">Leave MVCC</text>
+<text x="622" y="102" font-size="12.5" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">journal_mode = wal</text>
+<text x="622" y="122" font-size="12.5" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">checkpoint again</text>
+<text x="622" y="164" font-size="13" fill="#3b5563" text-anchor="start">header 2 2</text>
+<line x1="778" y1="115" x2="800" y2="115" stroke="#3b5563" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="804" y="40" width="168" height="150" rx="4" fill="#f6f0e2" stroke="#c0a15a" stroke-width="1.5"/>
+<text x="818" y="72" font-size="16" font-weight="700" fill="#153e51" text-anchor="start">Standard</text>
+<text x="818" y="102" font-size="12.5" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">SQLite: journal_mode</text>
+<text x="818" y="122" font-size="12.5" fill="#153e51" text-anchor="start" font-family="Menlo, Consolas, monospace">= DELETE</text>
+<text x="818" y="164" font-size="13" fill="#3b5563" text-anchor="start">header 1 1</text>
+<path d="M 300 192 C 300 262, 110 262, 110 194" fill="none" stroke="#3b5563" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<text x="320" y="246" font-size="15" fill="#3b5563" text-anchor="start">A crash: the next open recovers from .db-log and carries on. Only Turso can do that.</text>
+<text x="320" y="272" font-size="15" fill="#3b5563" text-anchor="start">Companions are removed only when empty; one with content is an error, since it may hold commits.</text>
+</svg>

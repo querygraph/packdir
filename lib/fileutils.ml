@@ -13,7 +13,8 @@ module N = Native
 
 let companion n =
   Filename.check_suffix n ".sqlar" || Filename.check_suffix n ".sqlar-journal" ||
-  Filename.check_suffix n ".sqlar.repack" || n = ".unison-packed" ||
+  Filename.check_suffix n ".sqlar.repack" || Filename.check_suffix n ".sqlar-wal" ||
+  Filename.check_suffix n ".sqlar-shm" || Filename.check_suffix n ".db-log" || n = ".unison-packed" ||
   (let k = ".sqlar.damaged-" in
    let rec has i = i + String.length k <= String.length n && (String.sub n i (String.length k) = k || has (i + 1)) in
    has 0)
@@ -27,7 +28,8 @@ type entry = {
   where : [ `Plain | `Member of string * string ]; (* container, member name *)
 }
 
-let with_container c f = let k = Container.open_ c in Fun.protect ~finally:(fun () -> Container.close k) (fun () -> f k)
+let with_container ?(read_only = false) c f =
+  let k = Container.open_ ~read_only c in Fun.protect ~finally:(fun () -> Container.close k) (fun () -> f k)
 
 let show_retained = ref false
 
@@ -35,7 +37,7 @@ let show_retained = ref false
 let members dir =
   match container_of dir with
   | None -> []
-  | Some c -> with_container c (fun k ->
+  | Some c -> with_container ~read_only:true c (fun k ->
       let modes = Container.modes k in
       List.filter_map (fun (m : Container.member) ->
         if m.retained && not !show_retained then None
@@ -76,7 +78,7 @@ let children dir =
 
 let read e = match e.where with
   | `Plain -> In_channel.with_open_bin e.path In_channel.input_all
-  | `Member (c, name) -> with_container c (fun k -> Container.read k name)
+  | `Member (c, name) -> with_container ~read_only:true c (fun k -> Container.read k name)
 
 (* --- Options ---------------------------------------------------------- *)
 
@@ -412,8 +414,8 @@ let rm args =
         if recursive then List.iter (fun n -> remove (Filename.concat p n)) (children p);
         (* An emptied container goes with its directory. *)
         (match container_of p with
-         | Some c when (with_container c (fun k -> Container.members k)) = [] || recursive ->
-             Sys.remove c; List.iter (fun x -> if Sys.file_exists (c ^ x) then Sys.remove (c ^ x)) ["-journal"]
+         | Some c when (with_container ~read_only:true c (fun k -> Container.members k)) = [] || recursive ->
+             Sys.remove c; List.iter (fun x -> if Sys.file_exists (c ^ x) then Sys.remove (c ^ x)) ["-journal"; "-wal"; "-shm"]
          | Some _ -> err "cannot remove %s: Directory not empty" (quote p)
          | None -> ());
         if Sys.file_exists p then
@@ -489,5 +491,34 @@ let cp_mv ~move args =
         end in
   List.iter (fun s -> copy s (if into then Filename.concat dest (Filename.basename s) else dest)) srcs
 
+(* --- mkdir ------------------------------------------------------------ *)
+
+(* A plain directory, as GNU's; --packed makes an empty container instead, so
+   files copied in become members. A member cannot hold a directory. *)
+let mkdir args =
+  prog := "mkdir";
+  let opts, paths = parse ~short_value:[] args in
+  let parents = has opts ["p"; "parents"] and verbose = has opts ["v"; "verbose"] and packed = has opts ["packed"] in
+  let fail p why = err "cannot create directory %s: %s" (quote p) why in
+  let make p =
+    if packed then with_container (p ^ ".sqlar") (fun _ -> ())
+    else Unix.mkdir p 0o777;
+    if verbose then Printf.printf "%s: created directory %s\n" !prog (quote p) in
+  let rec go p =
+    let up = Filename.dirname p in
+    match lookup p with
+    | Some { kind = `Dir; _ } when parents -> ()
+    | Some _ -> fail p "File exists"
+    | None when lookup up = None && parents -> go up; if !status = 0 then make_one p
+    | None -> make_one p
+  and make_one p =
+    let up = Filename.dirname p in
+    match lookup up with
+    | None -> fail p "No such file or directory"
+    | Some { kind = `Dir; _ } when container_of up = None || Sys.file_exists up -> make p
+    | Some _ -> fail p "Not a directory" in
+  if paths = [] then (err "missing operand"; exit 1);
+  List.iter go paths
+
 let commands = ["ls", ls; "cat", cat; "stat", stat; "du", du; "find", find; "rm", rm;
-                "cp", cp_mv ~move:false; "mv", cp_mv ~move:true]
+                "cp", cp_mv ~move:false; "mv", cp_mv ~move:true; "mkdir", mkdir]

@@ -10,7 +10,7 @@ p = argparse.ArgumentParser()
 p.add_argument('--packdir', required=True)
 a = p.parse_args()
 a.packdir = os.path.abspath(a.packdir)
-GNU = {n: shutil.which('g' + n) or '/usr/local/bin/g' + n for n in ('ls', 'cat', 'stat', 'du', 'rm', 'cp')}
+GNU = {n: shutil.which('g' + n) or '/usr/local/bin/g' + n for n in ('ls', 'cat', 'stat', 'du', 'rm', 'cp', 'mkdir')}
 checks = 0
 
 def check(ok, message):
@@ -128,5 +128,24 @@ with tempfile.TemporaryDirectory(prefix='packdir-fileutils-') as td:
     rc, o, e = run([a.packdir, 'rm', '-r', '0/0000'], t / 'packed2')
     check(rc == 0 and not (t / 'packed2/0/0000.sqlar').exists() and '0000' not in run([a.packdir, 'ls', '0'], t / 'packed2')[1],
           'rm -r removes a packed directory: ' + e)
+
+    # mkdir: GNU's output and refusals; a member cannot hold a directory; --packed starts a container.
+    shutil.copytree(plain, t / 'plain3'); shutil.copytree(packed, t / 'packed3')
+    member = sorted(os.listdir(plain / '0/0000'))[0]
+    for args in (['-v', 'new'], ['new'], ['-v', 'x/y'], ['-pv', 'x/y/z'], ['-p', 'x/y/z'], ['-pv', '0/deep/er'], ['0/0000'],
+                 ['-p', '0/0000'], ['0/0000/' + member + '/sub']):
+        rc1, o1, e1 = run([a.packdir, 'mkdir'] + args, t / 'packed3')
+        rc2, o2, e2 = run([GNU['mkdir']] + args, t / 'plain3')
+        o2 = o2.replace(GNU['mkdir'] + ':', 'mkdir:')
+        check(rc1 == rc2 and o1 == o2 and e1.split(': ', 1)[-1] == e2.split(': ', 1)[-1],
+              'mkdir %s: ours %d %r %r, GNU %d %r %r' % (args, rc1, o1, e1, rc2, o2, e2))
+    check((t / 'packed3/x/y/z').is_dir(), 'mkdir -p made the plain directories')
+    rc, o, e = run([a.packdir, 'mkdir', '--packed', 'box'], t / 'packed3')
+    check(rc == 0 and (t / 'packed3/box.sqlar').is_file() and not (t / 'packed3/box').exists(), 'mkdir --packed: ' + e)
+    rc, o, e = run([a.packdir, 'cp', 'new', 'box/'], t / 'packed3')
+    (t / 'hello').write_text('hello\n')
+    rc, o, e = run([a.packdir, 'cp', str(t / 'hello'), 'box/hello'], t / 'packed3')
+    check(rc == 0 and run([a.packdir, 'cat', 'box/hello'], t / 'packed3')[1] == 'hello\n', 'cp into a new container: ' + e)
+    verify(t / 'packed3/box.sqlar')
 
 print('PASS%d packdir fileutils controls' % checks)
