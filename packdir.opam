@@ -12,7 +12,7 @@ du, find, rm, cp and mv over them. Builds with stock OCaml 5 and with OxCaml.
 """
 maintainer: "Alexy Khrabrov"
 authors: ["Alexy Khrabrov"]
-license: "MIT"
+license: "Apache-2.0"
 homepage: "https://github.com/querygraph/packdir"
 bug-reports: "https://github.com/querygraph/packdir/issues"
 depends: [

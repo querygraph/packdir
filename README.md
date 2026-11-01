@@ -100,3 +100,7 @@ python3 test/fileutils.py --packdir _build/default/bin/main.exe   # 45 controls,
 
 `PACKDIR_SYNC` (`fullfsync`, `normal`) and `PACKDIR_CRASH_AFTER` exist for benchmarks and tests.
 `test/bench.py` compares methods on a target disk.
+
+## License
+
+Apache License 2.0; see `LICENSE`.
