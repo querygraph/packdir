@@ -1,0 +1,7 @@
+(library
+ (name packdir)
+ (public_name packdir)
+ (libraries sqlite3 unix)
+ (foreign_stubs
+  (language c)
+  (names packdir_stubs)))

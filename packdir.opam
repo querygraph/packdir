@@ -1,0 +1,25 @@
+opam-version: "2.0"
+name: "packdir"
+version: "0.1.0"
+synopsis: "Store directories of small files as SQLite archives, and use them like plain directories"
+description: """
+packdir keeps the files of a directory D as members of one SQLite archive
+D.sqlar, in the standard sqlar table that sqlite3 -Ax reads, with SHA-256,
+nanosecond mtimes and an epoch beside it. A tree of many small files becomes a
+few thousand files on disk, updated in place, one transaction per batch. It
+packs, unpacks, repacks and verifies trees, and offers GNU-style ls, cat, stat,
+du, find, rm, cp and mv over them. Builds with stock OCaml 5 and with OxCaml.
+"""
+maintainer: "Alexy Khrabrov"
+authors: ["Alexy Khrabrov"]
+license: "MIT"
+homepage: "https://github.com/querygraph/packdir"
+bug-reports: "https://github.com/querygraph/packdir/issues"
+depends: [
+  "ocaml" {>= "5.1"}
+  "dune" {>= "3.9"}
+  "sqlite3" {>= "5.0"}
+]
+build: [
+  ["dune" "build" "-p" name "-j" jobs]
+]
