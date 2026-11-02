@@ -95,7 +95,7 @@ CREATE TABLE unison_container(key TEXT PRIMARY KEY, value TEXT);  -- format, epo
 - `page_size = 65536`, `journal_mode = DELETE`, `synchronous = FULL`, and `auto_vacuum = INCREMENTAL`
   on containers SQLite creates. Turso cannot write auto-vacuum, so its containers have none.
 - Blobs are stored raw, so `sz = length(data)`. `sha256` holds the lower-case hex text, and `fp`
-  the raw MD5, with `fpalg = 'unison-md5/1'`. The `format` value is `unison-packdir/1`.
+  the raw MD5, with `fpalg = 'unison-md5/1'`. The `format` value is `unison-packdir/1`, or `unison-packdir/2` in a container holding clones (see the manual's chapter "Clones").
 - The table names are part of the format: Semantic Unison's packed roots read and write the same
   files.
 

@@ -1,7 +1,7 @@
 //! The packdir command line, the same as the OCaml build's:
 //!
 //!   packdir pack-tree ROOT OUT [--depth N] [--workers N] [--wal] [--batch-mib M]
-//!                              [--engine sqlite|turso] [--mvcc] [--writers N]
+//!                              [--engine sqlite|turso] [--mvcc] [--writers N] [--clones]
 //!   packdir list C.sqlar
 //!   packdir verify C.sqlar...
 //!   packdir restore C.sqlar OUT_DIR [--skip-retained]
@@ -11,11 +11,11 @@
 //!
 //! Workers are threads here and processes in OCaml: the same containers go to
 //! the same worker, and a crash ends the whole run either way.
-use crate::container::{self, Apply, Container, Member, OpenOptions, default_engine, plan};
+use crate::container::{self, Apply, ClonePut, Container, Member, OpenOptions, Put, WriteLock, default_engine, plan_deferred};
 use crate::native::{self as n, Kind, concat, dirname};
 use crate::{Error, Result, fileutils};
 use firstpair_tursolite::{Engine, Journal};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::os::unix::io::AsRawFd;
@@ -29,7 +29,7 @@ fn prog() -> String {
 fn usage() -> ! {
     eprintln!(
         "usage: packdir pack-tree ROOT OUT [--depth N] [--workers N] [--wal] [--batch-mib M]
-                 [--engine sqlite|turso] [--mvcc] [--writers N]
+                 [--engine sqlite|turso] [--mvcc] [--writers N] [--clones]
        packdir list C.sqlar
        packdir verify C.sqlar...
        packdir restore C.sqlar OUT_DIR [--skip-retained]
@@ -215,6 +215,9 @@ struct Run<'a> {
     state: &'a State,
     suspect: &'a HashSet<String>,
     lock: &'a Lock,
+    /// --clones: per container, the clone group members stored after the
+    /// parallel pass.
+    defer: &'a Defer,
 }
 
 impl Run<'_> {
@@ -227,6 +230,10 @@ impl Run<'_> {
 
     fn options(&self) -> OpenOptions {
         OpenOptions { journal: self.o.journal, engine: Some(self.o.engine), ..OpenOptions::default() }
+    }
+
+    fn deferred(&self, rel: &str) -> &[String] {
+        self.defer.get(rel).map_or(&[], |v| v.as_slice())
     }
 
     fn one(&self, rel: &str, t: &mut Totals, since: &mut usize) -> Result<()> {
@@ -265,7 +272,7 @@ impl Run<'_> {
         let unchanged = !suspicious
             && match recorded {
                 Some((st, known)) if Some(*st) == stamp() => {
-                    let (puts, retain) = plan(&skip, known, &src)?;
+                    let (puts, retain) = plan_deferred(&skip, self.deferred(rel), known, &src)?;
                     puts.is_empty() && retain.is_empty()
                 }
                 _ => false,
@@ -295,10 +302,10 @@ impl Run<'_> {
         })?;
         // MVCC writes containers side by side; everything else takes turns.
         let take_turn = |f: &mut dyn FnMut() -> Result<()>| self.lock.with(f);
-        let write_lock: Option<&(dyn Fn(&mut dyn FnMut() -> Result<()>) -> Result<()> + Sync)> =
+        let write_lock: WriteLock<'_> =
             if self.o.journal == Journal::Mvcc { None } else { Some(&take_turn) };
         let a = Apply { batch_bytes: self.o.batch_bytes, write_lock, writers: self.o.writers };
-        let result = c.update(a, &skip, &src).and_then(|r| Ok((r, c.members()?)));
+        let result = c.update_deferred(a, &skip, self.deferred(rel), &src).and_then(|r| Ok((r, c.members()?)));
         c.close()?;
         let ((stored, retained, bytes), members) = result?;
         t.stored += stored;
@@ -315,17 +322,192 @@ impl Run<'_> {
     }
 }
 
+/// A clone group: (container rel, name) of each member, in path order.
+type Group = Vec<(String, String)>;
+/// Per container, the clone group members stored after the parallel pass.
+type Defer = HashMap<String, Vec<String>>;
+
+/// --clones: APFS clone groups among the files under the containers' leaves,
+/// and, for each container, the group members that are new or changed since
+/// the state: those are stored after the parallel pass, the first of a group
+/// with no current member as data, the rest as references to its original.
+fn clone_groups(root: &str, dirs: &[String], state: &State) -> Result<(Vec<Group>, Defer)> {
+    let mut by_key: HashMap<(u64, u64), Group> = HashMap::new();
+    for rel in dirs {
+        let dir = concat(root, rel);
+        let mut names = n::readdir(&dir).unwrap_or_default();
+        names.sort();
+        for name in names {
+            if let Some(k) = n::clone_key(&concat(&dir, &name)) {
+                by_key.entry(k).or_default().push((rel.clone(), name));
+            }
+        }
+    }
+    let mut groups: Vec<Group> = by_key
+        .into_values()
+        .filter(|g| g.len() > 1)
+        .map(|mut g| {
+            g.sort();
+            g
+        })
+        .collect();
+    groups.sort();
+    let mut defer = Defer::new();
+    for (rel, name) in groups.iter().flatten() {
+        let st = n::stat(&concat(&concat(root, rel), name), true)?;
+        let current = state.get(rel).is_some_and(|(_, ms)| {
+            ms.iter().any(|m| m.name == *name && m.size == st.size && m.mtime_ns == st.mtime_ns && !m.retained)
+        });
+        if !current {
+            defer.entry(rel.clone()).or_default().push(name.clone());
+        }
+    }
+    Ok((groups, defer))
+}
+
+impl Run<'_> {
+    /// A container of the serial pass, opened for writing and listed as pending.
+    fn with_container<T>(&self, rel: &str, touched: &mut Vec<String>, f: impl FnOnce(&Container) -> Result<T>) -> Result<T> {
+        let target = format!("{}.sqlar", concat(self.out, rel));
+        self.lock.with(|| add_pending(self.out, rel))?;
+        if !touched.iter().any(|r| r == rel) {
+            touched.push(rel.to_string());
+        }
+        let c = self.lock.with(|| {
+            fs::create_dir_all(dirname(&target))?;
+            Container::open(target.as_ref(), &self.options())
+        })?;
+        let r = f(&c);
+        let closed = c.close();
+        let v = r?;
+        closed?;
+        Ok(v)
+    }
+
+    /// The serial pass for --clones. For each group with deferred members, the
+    /// original is its first member held as current data, or a current clone's
+    /// original; failing both, the first deferred member is stored as data and
+    /// becomes the original. The other deferred members are stored as clones
+    /// of it, a container at a time, and a container whose clones don't check
+    /// out (a file changed since the scan) stores them as data instead.
+    /// Returns the containers touched, and (stored, bytes, clones).
+    fn store_clones(&self, groups: &[Group]) -> Result<(Vec<String>, (usize, usize, usize))> {
+        let (root, out) = (self.root, self.out);
+        let logical = |rel: &str, name: &str| concat(&concat(out, rel), name);
+        type Info = (Vec<Member>, Vec<(String, String, String)>);
+        let mut opened: HashMap<String, Info> = HashMap::new();
+        let mut current = |rel: &str, name: &str| -> Result<Option<String>> {
+            if !opened.contains_key(rel) {
+                let path = format!("{}.sqlar", concat(out, rel));
+                let info = if !n::exists(&path) {
+                    (Vec::new(), Vec::new())
+                } else {
+                    let o = OpenOptions { create: false, read_only: true, engine: Some(self.o.engine), ..OpenOptions::default() };
+                    let c = Container::open(path.as_ref(), &o)?;
+                    let r = c.members().and_then(|ms| Ok((ms, c.clones()?)));
+                    c.close()?;
+                    r?
+                };
+                opened.insert(rel.to_string(), info);
+            }
+            let (ms, cs) = &opened[rel];
+            let st = n::stat(&concat(&concat(root, rel), name), true)?;
+            Ok(match ms.iter().find(|m| m.name == name) {
+                Some(m) if m.size == st.size && m.mtime_ns == st.mtime_ns && !m.retained => {
+                    match cs.iter().find(|(c, _, _)| c == name) {
+                        Some((_, original, _)) => Some(container::normalize(&concat(&concat(out, rel), original))),
+                        None => Some(logical(rel, name)),
+                    }
+                }
+                _ => None,
+            })
+        };
+        let mut data: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut clones: BTreeMap<String, Vec<ClonePut>> = BTreeMap::new();
+        for group in groups {
+            let mut deferred = Vec::new();
+            for (rel, name) in group {
+                if self.deferred(rel).contains(name) && current(rel, name)?.is_none() {
+                    deferred.push((rel, name));
+                }
+            }
+            if deferred.is_empty() {
+                continue;
+            }
+            let mut found = None;
+            for (rel, name) in group {
+                if let Some(o) = current(rel, name)? {
+                    found = Some(o);
+                    break;
+                }
+            }
+            let (original, rest) = match found {
+                Some(o) => (o, &deferred[..]),
+                None => {
+                    let (rel, name) = deferred[0];
+                    data.entry(rel.clone()).or_default().push(name.clone());
+                    (logical(rel, name), &deferred[1..])
+                }
+            };
+            for (rel, name) in rest {
+                clones.entry((*rel).clone()).or_default().push(ClonePut {
+                    clone: (*name).clone(),
+                    file: concat(&concat(root, rel), name),
+                    original: container::relative(&concat(out, rel), &original),
+                });
+            }
+        }
+        let (mut touched, mut stored, mut bytes, mut kept) = (Vec::new(), 0, 0, 0);
+        // MVCC writes containers side by side; everything else takes turns.
+        let take_turn = |f: &mut dyn FnMut() -> Result<()>| self.lock.with(f);
+        let write_lock: WriteLock<'_> = if self.o.journal == Journal::Mvcc { None } else { Some(&take_turn) };
+        let a = Apply { write_lock, ..Apply::default() };
+        // (stored, bytes) of members stored as data.
+        let store_data = |rel: &str, names: &[String], touched: &mut Vec<String>| -> Result<(usize, usize)> {
+            let puts: Vec<Put> = names.iter().map(|name| Put { member: name.clone(), source: concat(&concat(root, rel), name) }).collect();
+            Ok((puts.len(), self.with_container(rel, touched, |c| c.apply(a, &puts, &[]))?))
+        };
+        for (rel, names) in &data {
+            let (s, b) = store_data(rel, names, &mut touched)?;
+            stored += s;
+            bytes += b;
+        }
+        for (rel, cps) in &clones {
+            match self.with_container(rel, &mut touched, |c| c.apply_clones(a, cps)) {
+                Ok(_) => {
+                    stored += cps.len();
+                    kept += cps.len();
+                }
+                Err(e) => {
+                    println!("note: clones in {rel} stored as data ({e})");
+                    let (s, b) = store_data(rel, &cps.iter().map(|cp| cp.clone.clone()).collect::<Vec<_>>(), &mut touched)?;
+                    stored += s;
+                    bytes += b;
+                }
+            }
+        }
+        Ok((touched, (stored, bytes, kept)))
+    }
+}
+
 /// Keeps every directory `depth` levels under `root` as `out/<rel>.sqlar`.
 /// Workers read and hash containers in parallel, one writes at a time unless
 /// the journal is MVCC; a rerun stores only new and changed files and marks
 /// the vanished ones retained. Prints the run's totals as one line of JSON.
 pub fn pack_tree(root: &str, out: &str, o: &PackOptions) -> Result<()> {
+    pack_tree_with_clones(root, out, o, false)
+}
+
+/// [pack_tree]; with `clones`, each APFS clone of another file in the tree
+/// is kept as a reference to it, and the JSON line counts them.
+pub fn pack_tree_with_clones(root: &str, out: &str, o: &PackOptions, clones: bool) -> Result<()> {
     let begun = Instant::now();
     let mut state = load_state(out);
     let suspect = load_pending(out);
     let lock = Lock::new(out)?;
     let dirs = dirs_at(o.depth, root, "")?;
-    let run = Run { root, out, o, state: &state, suspect: &suspect, lock: &lock };
+    let (groups, defer) = if clones { clone_groups(root, &dirs, &state)? } else { (Vec::new(), Defer::new()) };
+    let run = Run { root, out, o, state: &state, suspect: &suspect, lock: &lock, defer: &defer };
     let mut total = Totals::default();
     let mut since = 0;
     if o.workers <= 1 {
@@ -372,6 +554,22 @@ pub fn pack_tree(root: &str, out: &str, o: &PackOptions) -> Result<()> {
             std::process::exit(1);
         }
     }
+    let mut kept = 0;
+    if !groups.is_empty() {
+        let (touched, (s, b, k)) = run.store_clones(&groups)?;
+        total.stored += s;
+        total.bytes += b;
+        kept = k;
+        for rel in touched {
+            let target = format!("{}.sqlar", concat(out, &rel));
+            let c = Container::open(target.as_ref(), &OpenOptions { create: false, read_only: true, engine: Some(o.engine), ..OpenOptions::default() })?;
+            let ms = c.members();
+            c.close()?;
+            let s = n::stat(&target, true)?;
+            // After the parallel pass's entries, so these, newer, win.
+            total.updates.push((rel, (s.ino, s.size, s.mtime_ns), ms?));
+        }
+    }
     let mut since = 0;
     // The final barrier, then the state; only then are the pending containers
     // known to be on the platter.
@@ -386,8 +584,9 @@ pub fn pack_tree(root: &str, out: &str, o: &PackOptions) -> Result<()> {
     barriers += 1;
     clear_pending(out)?;
     let dt = begun.elapsed().as_secs_f64();
+    let kept = if clones { format!(", \"clones\": {kept}") } else { String::new() };
     println!(
-        "{{\"barriers\": {barriers}, \"containers\": {}, \"opened\": {}, \"stored\": {}, \"retained\": {}, \"bytes\": {}, \"seconds\": {dt:.3}, \"scan_seconds\": {:.3}, \"mib_per_s\": {:.1}, \"files_per_s\": {:.1}}}",
+        "{{\"barriers\": {barriers}, \"containers\": {}, \"opened\": {}, \"stored\": {}, \"retained\": {}, \"bytes\": {}, \"seconds\": {dt:.3}, \"scan_seconds\": {:.3}, \"mib_per_s\": {:.1}, \"files_per_s\": {:.1}{kept}}}",
         dirs.len(), total.opened, total.stored, total.retained, total.bytes, total.scan_seconds,
         total.bytes as f64 / 1048576.0 / dt, total.stored as f64 / dt
     );
@@ -441,7 +640,7 @@ fn run(args: &[String]) -> Result<()> {
     match pos.as_slice() {
         ["pack-tree", root, out] => {
             let mvcc = flag("--mvcc");
-            pack_tree(root, out, &PackOptions {
+            pack_tree_with_clones(root, out, &PackOptions {
                 depth: int(&value("--depth", "2"))?,
                 journal: if mvcc { Journal::Mvcc } else if flag("--wal") { Journal::Wal } else { Journal::Delete },
                 engine: if mvcc { Engine::Turso } else { engine },
@@ -449,7 +648,7 @@ fn run(args: &[String]) -> Result<()> {
                 workers: int(&value("--workers", "1"))?,
                 writers: int(&value("--writers", "1"))?,
                 barrier_bytes: int(&value("--barrier-gib", "4"))? * 1073741824,
-            })
+            }, flag("--clones"))
         }
         ["list", path] => {
             let c = open_read(path)?;
@@ -485,14 +684,24 @@ fn run(args: &[String]) -> Result<()> {
             // nanosecond mtimes.
             let skip = flag("--skip-retained");
             let found = containers_under(out, "")?;
-            let mut files = 0;
+            let (mut files, mut restored, mut jobs) = (0, container::Restored::new(), Vec::new());
+            // Every file that holds data first, then the clones, from the
+            // originals just restored.
             for rel in &found {
                 let c = open_read(&format!("{}.sqlar", concat(out, rel)))?;
-                c.restore(skip, &concat(dest, rel))?;
-                files += c.members()?.iter().filter(|m| !(skip && m.retained)).count();
+                let r = c.restore_data(skip, &concat(dest, rel));
                 c.close()?;
+                let (written, j) = r?;
+                files += written.len() + j.len();
+                restored.extend(written);
+                jobs.extend(j);
             }
-            println!("{{\"containers\": {}, \"files\": {files}}}", found.len());
+            let (cloned, copied) = container::restore_clones(&restored, &jobs)?;
+            if jobs.is_empty() {
+                println!("{{\"containers\": {}, \"files\": {files}}}", found.len());
+            } else {
+                println!("{{\"containers\": {}, \"files\": {files}, \"cloned\": {cloned}, \"copied\": {copied}}}", found.len());
+            }
             Ok(())
         }
         ["repack", paths @ ..] if !paths.is_empty() => {

@@ -194,6 +194,93 @@ pub fn fullfsync(file: &fs::File) -> Result<()> {
     Ok(())
 }
 
+// APFS clones: getattrlist's ATTR_CMNEXT_CLONEID and ATTR_CMNEXT_CLONE_REFCNT,
+// and clonefile(2). The libc crate has the calls but not every constant.
+#[cfg(target_os = "macos")]
+const ATTR_CMNEXT_CLONE_REFCNT: u32 = 0x1000;
+#[cfg(target_os = "macos")]
+const CLONE_NOFOLLOW: u32 = 0x1;
+#[cfg(target_os = "macos")]
+const CLONE_NOOWNERCOPY: u32 = 0x2;
+
+/// getattrlist's reply: its length, the attributes returned, then the clone
+/// id and refcount, packed.
+#[cfg(target_os = "macos")]
+#[repr(C, packed)]
+#[derive(Default)]
+struct CloneAttrs {
+    length: u32,
+    returned: [u32; 5],
+    clone_id: u64,
+    refcount: u32,
+}
+
+/// (device, APFS clone id, refcount) of a regular file on a volume that
+/// reports clone ids (macOS APFS), or None. Files with the same device and
+/// clone id and a refcount above 1 are whole-file clones of one another;
+/// writing to one gives it a new clone id.
+pub fn clone_info(path: &str) -> Option<(u64, u64, u64)> {
+    let m = fs::symlink_metadata(path).ok()?;
+    if !m.file_type().is_file() {
+        return None;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let p = c_path(path).ok()?;
+        // SAFETY: attrlist is plain data; zero is its empty value.
+        let mut al: libc::attrlist = unsafe { std::mem::zeroed() };
+        al.bitmapcount = libc::ATTR_BIT_MAP_COUNT;
+        al.commonattr = libc::ATTR_CMN_RETURNED_ATTRS;
+        al.forkattr = libc::ATTR_CMNEXT_CLONEID | ATTR_CMNEXT_CLONE_REFCNT;
+        let mut out = CloneAttrs::default();
+        // SAFETY: p is a NUL-terminated path, al an attrlist, and out a buffer
+        // of the size passed.
+        let rc = unsafe {
+            libc::getattrlist(
+                p.as_ptr(),
+                (&raw mut al).cast(),
+                (&raw mut out).cast(),
+                std::mem::size_of::<CloneAttrs>(),
+                libc::FSOPT_ATTR_CMN_EXTENDED | libc::FSOPT_NOFOLLOW,
+            )
+        };
+        let returned = out.returned;
+        let want = libc::ATTR_CMNEXT_CLONEID | ATTR_CMNEXT_CLONE_REFCNT;
+        if rc == 0 && returned[4] & want == want {
+            return Some((m.dev(), out.clone_id, out.refcount as u64));
+        }
+    }
+    None
+}
+
+/// (device, APFS clone id) of a regular file that has whole-file clones, or
+/// None: not APFS, not macOS, or no other file shares its clone id.
+pub fn clone_key(path: &str) -> Option<(u64, u64)> {
+    match clone_info(path) {
+        Some((dev, id, refcount)) if refcount > 1 => Some((dev, id)),
+        _ => None,
+    }
+}
+
+/// clonefile(src, dst): a new file `dst` sharing `src`'s blocks. An error where
+/// there is no clonefile (another volume, no APFS, not macOS).
+pub fn clonefile(src: &str, dst: &str) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        let (s, d) = (c_path(src)?, c_path(dst)?);
+        // SAFETY: both are NUL-terminated paths.
+        if unsafe { libc::clonefile(s.as_ptr(), d.as_ptr(), CLONE_NOFOLLOW | CLONE_NOOWNERCOPY) } < 0 {
+            return Err(at(dst, std::io::Error::last_os_error()));
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = src;
+        Err(at(dst, std::io::Error::from_raw_os_error(libc::EOPNOTSUPP)))
+    }
+}
+
 pub fn chmod(path: &str, mode: u32) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
     fs::set_permissions(path, fs::Permissions::from_mode(mode)).map_err(|e| at(path, e))

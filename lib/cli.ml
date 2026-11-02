@@ -1,13 +1,14 @@
 (* The packdir command line, shared by packdir and unison-packdir.
 
      packdir pack-tree ROOT OUT [--depth N] [--workers N] [--wal] [--batch-mib M]
-                                [--engine sqlite|turso] [--mvcc] [--writers N]
+                                [--engine sqlite|turso] [--mvcc] [--writers N] [--clones]
        keep every directory N levels under ROOT (default 2, the preview leaves
        <H>/<HHHH>) as OUT/<rel>.sqlar; N workers read and hash containers in
        parallel, one writes at a time; a rerun stores only new and changed
        files and marks the vanished ones retained. --engine turso writes with
        Turso; --mvcc takes off the writer lock between containers, and --writers
-       writes the batches of one container concurrently
+       writes the batches of one container concurrently; --clones keeps each
+       APFS clone of another file in the tree as a reference to it
      packdir list C.sqlar
      packdir verify C.sqlar...
      packdir restore C.sqlar OUT_DIR [--skip-retained]
@@ -21,7 +22,7 @@ let prog () = Filename.basename Sys.argv.(0)
 
 let usage () =
   prerr_endline "usage: packdir pack-tree ROOT OUT [--depth N] [--workers N] [--wal] [--batch-mib M]\n\
-                \                 [--engine sqlite|turso] [--mvcc] [--writers N]\n\
+                \                 [--engine sqlite|turso] [--mvcc] [--writers N] [--clones]\n\
                 \       packdir list C.sqlar\n\
                 \       packdir verify C.sqlar...\n\
                 \       packdir restore C.sqlar OUT_DIR [--skip-retained]\n\
@@ -129,7 +130,96 @@ let clear_pending out =
   Out_channel.with_open_bin (pending_file out ^ ".tmp") (fun _ -> ());
   Sys.rename (pending_file out ^ ".tmp") (pending_file out)
 
-let pack_tree root out ~depth ~journal ~engine ~batch_bytes ~workers ~writers ~barrier_bytes =
+(* --clones: APFS clone groups among the files under the containers' leaves,
+   as (container rel, name) lists in path order, and, for each container,
+   the group members that are new or changed since the state: those are
+   stored after the parallel pass, the first of a group with no current
+   member as data, the rest as references to its original. *)
+let clone_groups root dirs state =
+  let by_key = Hashtbl.create 1024 in
+  Array.iter (fun rel ->
+    let dir = Filename.concat root rel in
+    List.iter (fun n ->
+      match Native.clone_key (Filename.concat dir n) with
+      | Some k -> Hashtbl.replace by_key k ((rel, n) :: Option.value (Hashtbl.find_opt by_key k) ~default:[])
+      | None -> ()) (try List.sort compare (Array.to_list (Sys.readdir dir)) with Sys_error _ -> [])) dirs;
+  let groups = Hashtbl.fold (fun _ g acc -> if List.length g > 1 then List.sort compare g :: acc else acc) by_key [] in
+  let defer = Hashtbl.create 256 in
+  List.iter (List.iter (fun (rel, n) ->
+    let st = Native.stat (Filename.concat (Filename.concat root rel) n) in
+    let current = match Hashtbl.find_opt state rel with
+      | Some (_, ms) -> List.exists (fun (m : Container.member) ->
+          m.name = n && m.size = st.Native.size && m.mtime_ns = st.Native.mtime_ns && not m.retained) ms
+      | None -> false in
+    if not current then Hashtbl.replace defer rel (n :: Option.value (Hashtbl.find_opt defer rel) ~default:[]))) groups;
+  List.sort compare groups, defer
+
+(* The serial pass for --clones. For each group with deferred members, the
+   original is its first member held as current data, or a current clone's
+   original; failing both, the first deferred member is stored as data and
+   becomes the original. The other deferred members are stored as clones of
+   it, a container at a time, and a container whose clones don't check out
+   (a file changed since the scan) stores them as data instead. Returns the
+   containers touched, and (stored, bytes, clones). *)
+let store_clones root out groups defer ~journal ~engine ~write_lock ~txn_lock ~add_pending =
+  let logical rel n = Filename.concat (Filename.concat out rel) n in
+  let opened = Hashtbl.create 64 in
+  let info rel = match Hashtbl.find_opt opened rel with
+    | Some i -> i
+    | None ->
+        let path = Filename.concat out rel ^ ".sqlar" in
+        let i = if not (Sys.file_exists path) then [], [] else begin
+            let c = Container.open_ ~create:false ~read_only:true ~engine path in
+            Fun.protect ~finally:(fun () -> Container.close c) (fun () -> Container.members c, Container.clones c)
+          end in
+        Hashtbl.replace opened rel i; i in
+  let current rel n =
+    let ms, cs = info rel in
+    let st = Native.stat (Filename.concat (Filename.concat root rel) n) in
+    match List.find_opt (fun (m : Container.member) -> m.name = n) ms with
+    | Some m when m.size = st.Native.size && m.mtime_ns = st.Native.mtime_ns && not m.retained ->
+        (match List.find_opt (fun (name, _, _) -> name = n) cs with
+         | Some (_, original, _) -> Some (Container.normalize (Filename.concat (Filename.concat out rel) original))
+         | None -> Some (logical rel n))
+    | _ -> None in
+  let data = Hashtbl.create 64 and clones = Hashtbl.create 64 in
+  let add t rel x = Hashtbl.replace t rel (x :: Option.value (Hashtbl.find_opt t rel) ~default:[]) in
+  List.iter (fun group ->
+    let deferred = List.filter (fun (rel, n) ->
+      List.mem n (Option.value (Hashtbl.find_opt defer rel) ~default:[]) && current rel n = None) group in
+    if deferred <> [] then begin
+      let original, rest = match List.find_map (fun (rel, n) -> current rel n) group with
+        | Some o -> o, deferred
+        | None -> let (rel, n) = List.hd deferred in add data rel n; logical rel n, List.tl deferred in
+      List.iter (fun (rel, n) ->
+        add clones rel { Container.clone = n; file = Filename.concat (Filename.concat root rel) n;
+                         original = Container.relative ~from:(Filename.concat out rel) original }) rest
+    end) groups;
+  let touched = Hashtbl.create 64 and stored = ref 0 and bytes = ref 0 and kept = ref 0 in
+  let with_container rel f =
+    let target = Filename.concat out rel ^ ".sqlar" in
+    write_lock (fun () -> add_pending rel);
+    Hashtbl.replace touched rel ();
+    let c = ref None in
+    write_lock (fun () -> Native.mkdir_p (Filename.dirname target); c := Some (Container.open_ ~journal ~engine target));
+    let c = Option.get !c in
+    Fun.protect ~finally:(fun () -> Container.close c) (fun () -> f c) in
+  let store_data rel names =
+    with_container rel (fun c ->
+      let puts = List.map (fun n -> { Container.member = n; source = Filename.concat (Filename.concat root rel) n }) names in
+      bytes := !bytes + Container.apply ~write_lock:txn_lock c ~puts ~retain:[];
+      stored := !stored + List.length puts) in
+  Hashtbl.iter (fun rel names -> store_data rel (List.rev names)) data;
+  Hashtbl.iter (fun rel cps ->
+    let cps = List.rev cps in
+    match with_container rel (fun c -> Container.apply_clones ~write_lock:txn_lock c cps) with
+    | _ -> stored := !stored + List.length cps; kept := !kept + List.length cps
+    | exception Failure e ->
+        Printf.printf "note: clones in %s stored as data (%s)\n%!" rel e;
+        store_data rel (List.map (fun (cp : Container.clone_put) -> cp.clone) cps)) clones;
+  Hashtbl.fold (fun rel () acc -> rel :: acc) touched [], (!stored, !bytes, !kept)
+
+let pack_tree ?(clones = false) root out ~depth ~journal ~engine ~batch_bytes ~workers ~writers ~barrier_bytes =
   let t0 = Unix.gettimeofday () in
   let state = load_state out in
   let suspect = load_pending out in
@@ -140,6 +230,9 @@ let pack_tree root out ~depth ~journal ~engine ~batch_bytes ~workers ~writers ~b
   let write_lock f = with_lock fd f in
   (* MVCC writes containers side by side; everything else takes turns. *)
   let txn_lock = if journal = Container.Mvcc then (fun f -> f ()) else write_lock in
+  let dirs = Array.of_list (dirs_at depth root "") in
+  let groups, defer = if clones then clone_groups root dirs state else [], Hashtbl.create 1 in
+  let deferred rel = Option.value (Hashtbl.find_opt defer rel) ~default:[] in
   let one rel =
     let target = Filename.concat out rel ^ ".sqlar" in
     (* A plain directory beside the container is pre-existing content, never
@@ -175,7 +268,7 @@ let pack_tree root out ~depth ~journal ~engine ~batch_bytes ~workers ~writers ~b
       (Hashtbl.mem suspect rel || match Hashtbl.find_opt state rel with
         | Some (st, _) -> Some st <> stamp () | None -> false) in
     let unchanged = not suspicious && match Hashtbl.find_opt state rel with
-      | Some (st, known) -> Some st = stamp () && Container.plan ~skip known src = ([], [])
+      | Some (st, known) -> Some st = stamp () && Container.plan ~skip ~defer:(deferred rel) known src = ([], [])
       | None -> false in
     scan_seconds := !scan_seconds +. (Unix.gettimeofday () -. t);
     if unchanged then (0, 0, 0), None
@@ -194,13 +287,12 @@ let pack_tree root out ~depth ~journal ~engine ~batch_bytes ~workers ~writers ~b
         write_lock (fun () -> add_pending out rel);
         let c = write_lock (fun () -> Native.mkdir_p (Filename.dirname target); Container.open_ ~journal ~engine target) in
         let result, members = Fun.protect ~finally:(fun () -> Container.close c) (fun () ->
-          let r = Container.update ~batch_bytes ~write_lock:txn_lock ~writers ~skip c src in r, Container.members c) in
+          let r = Container.update ~batch_bytes ~write_lock:txn_lock ~writers ~skip ~defer:(deferred rel) c src in r, Container.members c) in
         let _, _, b = result in
         since_barrier := !since_barrier + b;
         if !since_barrier >= barrier_bytes then write_lock barrier;
         result, Option.map (fun st -> rel, (st, members)) (stamp ())
     end in
-  let dirs = Array.of_list (dirs_at depth root "") in
   let containers = Array.length dirs and stored = ref 0 and retained = ref 0 and bytes = ref 0 in
   let updates = ref [] in
   let add ((s, r, b), u) =
@@ -237,6 +329,19 @@ let pack_tree root out ~depth ~journal ~engine ~batch_bytes ~workers ~writers ~b
       | Unix.WEXITED 0 -> () | Unix.WEXITED n -> failed := n | _ -> failed := 1) children;
     if !failed <> 0 then exit !failed
   end;
+  let kept = ref 0 in
+  if groups <> [] then begin
+    let touched, (s, b, k) = store_clones root out groups defer ~journal ~engine ~write_lock ~txn_lock
+        ~add_pending:(add_pending out) in
+    stored := !stored + s; bytes := !bytes + b; kept := k;
+    List.iter (fun rel ->
+      let target = Filename.concat out rel ^ ".sqlar" in
+      let c = Container.open_ ~create:false ~read_only:true ~engine target in
+      let ms = Fun.protect ~finally:(fun () -> Container.close c) (fun () -> Container.members c) in
+      let s = Native.stat target in
+      (* After the parallel pass's entries, so these, newer, win. *)
+      updates := !updates @ [rel, ((s.Native.ino, s.Native.size, s.Native.mtime_ns), ms)]) touched
+  end;
   (* The final barrier, then the state; only then are the pending containers
      known to be on the platter. *)
   write_lock barrier;
@@ -247,8 +352,9 @@ let pack_tree root out ~depth ~journal ~engine ~batch_bytes ~workers ~writers ~b
   let dt = Unix.gettimeofday () -. t0 in
   (* scan_seconds is summed over workers: the time spent stating containers
      and planning against the plain side, apart from opening and writing. *)
-  Printf.printf "{\"barriers\": %d, \"containers\": %d, \"opened\": %d, \"stored\": %d, \"retained\": %d, \"bytes\": %d, \"seconds\": %.3f, \"scan_seconds\": %.3f, \"mib_per_s\": %.1f, \"files_per_s\": %.1f}\n"
+  Printf.printf "{\"barriers\": %d, \"containers\": %d, \"opened\": %d, \"stored\": %d, \"retained\": %d, \"bytes\": %d, \"seconds\": %.3f, \"scan_seconds\": %.3f, \"mib_per_s\": %.1f, \"files_per_s\": %.1f%s}\n"
     !barriers containers !opened !stored !retained !bytes dt !scan_seconds (float !bytes /. 1048576. /. dt) (float !stored /. dt)
+    (if clones then Printf.sprintf ", \"clones\": %d" !kept else "")
 
 let main () =
   (* GNU-style file commands over packed trees: packdir ls -l ROOT ... *)
@@ -269,7 +375,7 @@ let main () =
   let open_read path = Container.open_ ~create:false ~read_only:true ~engine path in
   try match pos with
     | ["pack-tree"; root; out] ->
-        pack_tree root out ~depth:(int_of_string (value "--depth" "2"))
+        pack_tree ~clones:(flag "--clones") root out ~depth:(int_of_string (value "--depth" "2"))
           ~journal:(if flag "--mvcc" then Container.Mvcc else if flag "--wal" then Container.Wal else Container.Delete)
           ~engine:(if flag "--mvcc" then Tursolite.Turso else engine)
           ~writers:(int_of_string (value "--writers" "1"))
@@ -303,14 +409,20 @@ let main () =
             | Unix.S_REG when Filename.check_suffix n ".sqlar" -> [Filename.chop_suffix r ".sqlar"]
             | _ -> []) (List.sort compare (Array.to_list (Sys.readdir dir))) in
         let found = containers out "" in
-        let files = ref 0 in
+        let files = ref 0 and restored = Hashtbl.create 4096 and jobs = ref [] in
+        (* Every file that holds data first, then the clones, from the
+           originals just restored. *)
         List.iter (fun rel ->
           let c = open_read (Filename.concat out rel ^ ".sqlar") in
           Fun.protect ~finally:(fun () -> Container.close c) (fun () ->
-            Container.restore ~skip_retained:(flag "--skip-retained") c (Filename.concat dest rel);
-            files := !files + List.length (List.filter (fun (m : Container.member) ->
-              not (flag "--skip-retained" && m.retained)) (Container.members c)))) found;
-        Printf.printf "{\"containers\": %d, \"files\": %d}\n" (List.length found) !files
+            let written, j = Container.restore_data ~skip_retained:(flag "--skip-retained") c (Filename.concat dest rel) in
+            List.iter (fun (k, f) -> Hashtbl.replace restored k f) written;
+            jobs := List.rev_append j !jobs;
+            files := !files + List.length written + List.length j)) found;
+        let cloned, copied = Container.restore_clones ~restored (List.rev !jobs) in
+        if !jobs = [] then Printf.printf "{\"containers\": %d, \"files\": %d}\n" (List.length found) !files
+        else Printf.printf "{\"containers\": %d, \"files\": %d, \"cloned\": %d, \"copied\": %d}\n"
+            (List.length found) !files cloned copied
     | "repack" :: (_ :: _ as paths) ->
         List.iter (fun p ->
           let kept, before, after = Container.repack ~drop_retained:(flag "--drop-retained") ~engine p in
@@ -318,7 +430,7 @@ let main () =
     | ["restore"; path; out] ->
         let c = open_read path in
         Fun.protect ~finally:(fun () -> Container.close c) (fun () ->
-          Container.restore ~skip_retained:(flag "--skip-retained") c out)
+          ignore (Container.restore ~skip_retained:(flag "--skip-retained") c out))
     | _ -> usage ()
   with Failure e | Sys_error e -> prerr_endline (prog () ^ ": " ^ e); exit 1
      | Unix.Unix_error (e, f, a) -> Printf.eprintf "%s: %s: %s %s\n" (prog ()) f (Unix.error_message e) a; exit 1

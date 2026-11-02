@@ -46,3 +46,41 @@ fn a_directory_in_a_container() {
         fs::remove_dir_all(&d).unwrap();
     }
 }
+
+#[test]
+fn clones_as_references() {
+    use packdir::container::{ClonePut, relative};
+    let d = std::env::temp_dir().join(format!("packdir-lib-clones-{}", std::process::id()));
+    let plain = d.join("plain");
+    fs::create_dir_all(&plain).unwrap();
+    let bytes = vec![7u8; 70000];
+    for name in ["x", "y", "z"] {
+        fs::write(plain.join(name), &bytes).unwrap();
+    }
+    let file = |name: &str| plain.join(name).to_string_lossy().into_owned();
+    let (leaf, other) = (d.join("leaf.sqlar"), d.join("other.sqlar"));
+    let o = OpenOptions::default();
+    let c = Container::open(&leaf, &o).unwrap();
+    c.apply(Apply::default(), &[Put { member: "x".into(), source: file("x") }], &[]).unwrap();
+    let y = ClonePut { clone: "y".into(), file: file("y"), original: "x".into() };
+    assert_eq!(c.apply_clones(Apply::default(), &[y]).unwrap(), 70000);
+    let k = Container::open(&other, &o).unwrap();
+    let original = relative(d.join("other").to_str().unwrap(), d.join("leaf/x").to_str().unwrap());
+    assert_eq!(original, "../leaf/x");
+    k.apply_clones(Apply::default(), &[ClonePut { clone: "z".into(), file: file("z"), original }]).unwrap();
+    assert_eq!(c.members().unwrap().iter().map(|m| m.name.as_str()).collect::<Vec<_>>(), ["x", "y"]);
+    assert_eq!((c.read("y").unwrap(), k.read("z").unwrap()), (bytes.clone(), bytes.clone()));
+    assert_eq!((c.verify().unwrap(), k.verify().unwrap()), (Vec::new(), Vec::new()));
+
+    // A renamed original moves its references; a removed one materializes them.
+    c.rename("x", "w").unwrap();
+    assert_eq!(c.clone_of("y").unwrap().map(|(o, _)| o).as_deref(), Some("w"));
+    assert_eq!(k.clone_of("z").unwrap().map(|(o, _)| o).as_deref(), Some("../leaf/w"));
+    c.remove(&["w".to_string()]).unwrap();
+    assert_eq!((c.clone_of("y").unwrap(), k.clone_of("z").unwrap()), (None, None));
+    assert_eq!((c.read("y").unwrap(), k.read("z").unwrap()), (bytes.clone(), bytes));
+    assert_eq!((c.verify().unwrap(), k.verify().unwrap()), (Vec::new(), Vec::new()));
+    c.close().unwrap();
+    k.close().unwrap();
+    fs::remove_dir_all(&d).unwrap();
+}

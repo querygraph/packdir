@@ -173,7 +173,7 @@ CREATE TABLE unison_container(key TEXT PRIMARY KEY, value TEXT);
 - `page_size` is 65536, so a typical member takes few pages.
 - Blobs are raw, so `sz` is the length of `data`. SQLite's archive tool would call this an uncompressed member.
 - `sha256` holds lower-case hex text. `fp` holds the raw MD5, with `fpalg` set to `unison-md5/1`.
-- `unison_container` holds `format`, which is `unison-packdir/1`, and `epoch`, a counter bumped by committed changes. Another program can compare the epoch to notice that a container changed.
+- `unison_container` holds `format`, which is `unison-packdir/1`, or `unison-packdir/2` when the container holds clones (see the next chapter), and `epoch`, a counter bumped by committed changes. Another program can compare the epoch to notice that a container changed.
 
 Containers SQLite creates have `auto_vacuum = INCREMENTAL` and `journal_mode = DELETE`, so nothing is left beside them between transactions. Containers Turso creates have no auto-vacuum, for the reason given in the next chapter. That is the only stored difference between them. The members, the hashes and the bytes are the same.
 
@@ -182,6 +182,58 @@ Beside the containers, `OUT` holds three files of packdir's own:
 - `.packdir-state`: for each container, its file's identity after the last run and its members then. It is a small text format that both builds share. Losing it costs one full re-read.
 - `.packdir-pending`: containers written since the last barrier.
 - `.packdir-writer.lock`: the writer lock.
+
+# Clones
+
+On APFS, `cp -c` and Finder's Duplicate make a **clone**: a second file that shares the first one's blocks until either is written. A plain copy loses that. Each clone becomes a full copy, and the space doubles. Photo libraries are full of them: one application's previews cloned into another's folder, or the same preview shared by two catalogs.
+
+`pack-tree --clones` keeps them. Before packing, it reads each file's APFS clone ID and refcount. Files in the tree that share a clone ID, with a refcount above 1, form a group:
+
+- **One member of each group holds the bytes:** the first that is already packed, or else the first in path order.
+- **Every other member is a reference to it,** in its own container or another. A reference costs a row, not a copy.
+- **Files with identical bytes that were not clones stay separate.** Only real clones are kept as clones.
+
+```sh
+packdir pack-tree photos packed --clones
+```
+
+`unpack-tree` puts them back as clones. It restores every file that holds data first. Then it makes each clone with `clonefile` from its original's restored file and gives it the clone's own mode and mtime. Its summary line counts both:
+
+```text
+{"containers": 3, "files": 7, "cloned": 3, "copied": 0}
+```
+
+A clone whose original wasn't restored in the same run, or whose destination can't clone (another volume, a file system other than APFS, another system), gets its original's bytes instead, and counts as copied. `restore` of a single container does the same: clones within that container are cloned, and clones of members elsewhere are copied.
+
+## How clones are stored
+
+A container with clones has two more tables:
+
+```sql
+CREATE TABLE packdir_clone(name TEXT PRIMARY KEY, mode INT, mtime INT, sz INT,
+  original TEXT NOT NULL, sha256 BLOB NOT NULL);
+CREATE TABLE packdir_cloned_by(name TEXT NOT NULL, clone TEXT NOT NULL,
+  PRIMARY KEY (name, clone));
+```
+
+- **A clone has a `packdir_clone` row and no `sqlar` row.** `original` is the path of its original relative to the container's directory, for example `../../lr/0000/a_320`. Its `unison_member` row is as for any member, so the packed view, `ls`, `stat`, `du`, `find` and Semantic Unison see an ordinary file. `cat` and `cp` read the original's bytes and check the SHA-256.
+- **The original's container lists its clones** in `packdir_cloned_by`. Before anything changes or removes an original, its clones get its bytes as `sqlar` rows of their own. That covers a new version stored by `pack-tree`, `rm`, `repack --drop-retained`, and a clone whose source file stopped being a clone. `mv` of an original rewrites its clones' references instead. A deleted original kept as retained keeps its bytes, so its clones still read.
+- **The format becomes `unison-packdir/2`** in any container with clone rows or back-references. Builds from before clones refuse such a container instead of missing its clones. Containers without clones stay `unison-packdir/1`.
+- **`verify` checks every clone:** its member row, that it holds no data of its own, and that its original exists and has the same SHA-256.
+
+## Without packdir
+
+A clone has no row in `sqlar`, so `sqlite3 -Ax` extracts every other member and skips it. This is deliberate: a member with no data would make `sqlite3 -Ax` stop with "error in uncompress()" and extract nothing after it. After extracting each container `D.sqlar` into `D/`, stock tools bring the clones back:
+
+```sh
+cd D
+sqlite3 -separator $'\t' ../D.sqlar "SELECT original, name, mtime FROM packdir_clone" |
+while IFS=$'\t' read -r original name mtime; do
+  cp -c "$original" "$name" && touch -t "$(date -r "$mtime" +%Y%m%d%H%M.%S)" "$name"
+done
+```
+
+`cp -c` makes a clone where it can and copies otherwise.
 
 # SQLite and Turso
 
@@ -398,6 +450,7 @@ Nothing in packdir needs Unison. The dependence runs the other way.
 - **No compression.** Compress before packing if your data would benefit.
 - **No subdirectories inside a container.** Choose a depth so that packed directories are leaves. A subdirectory under one is not packed.
 - **Symbolic links are not stored.** Only regular files are members.
+- **Clones are found only on macOS, on APFS, with `--clones`.** Files packed before `--clones` was used stay as data, even if they are clones; only new and changed files are grouped.
 - **Owners are not stored.** Members show the owner of their container.
 - **One process per Turso database.** Turso locks the file, so MVCC's concurrency is inside one process. Containers are separate databases, which is why processes can still work on different ones.
 - **Turso is young.** Its format, its experimental features and its MVCC mode are still changing, and 0.8.3 is pinned exactly. An upgrade should rerun the tests above. SQLite remains the default for that reason.

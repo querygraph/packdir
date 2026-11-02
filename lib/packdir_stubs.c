@@ -100,3 +100,67 @@ CAMLprim value packdir_fullfsync(value fd) {
   if (fsync(Int_val(fd)) < 0) uerror("fullfsync", Nothing);
   return Val_unit;
 }
+
+/* APFS clones. [packdir_clone_info path] is [| dev; clone id; refcount |] for
+   a regular file on a volume that reports clone ids (macOS APFS), or [||].
+   Files with the same dev and clone id and a refcount above 1 are whole-file
+   clones of one another; writing to one gives it a new clone id. */
+#ifdef __APPLE__
+#include <sys/attr.h>
+#include <sys/clonefile.h>
+struct packdir_clone_attrs {
+  uint32_t length;
+  attribute_set_t returned;
+  uint64_t clone_id;
+  uint32_t refcount;
+} __attribute__((packed));
+#endif
+
+CAMLprim value packdir_clone_info(value path) {
+  CAMLparam1(path);
+  CAMLlocal1(r);
+#ifdef __APPLE__
+  struct attrlist al;
+  struct packdir_clone_attrs out;
+  struct stat st;
+  char *p = caml_stat_strdup(String_val(path));
+  int ok;
+  memset(&al, 0, sizeof al);
+  memset(&out, 0, sizeof out);
+  al.bitmapcount = ATTR_BIT_MAP_COUNT;
+  al.commonattr = ATTR_CMN_RETURNED_ATTRS;
+  al.forkattr = ATTR_CMNEXT_CLONEID | ATTR_CMNEXT_CLONE_REFCNT;
+  caml_enter_blocking_section();
+  ok = lstat(p, &st) == 0 && S_ISREG(st.st_mode) &&
+       getattrlist(p, &al, &out, sizeof out, FSOPT_ATTR_CMN_EXTENDED | FSOPT_NOFOLLOW) == 0;
+  caml_leave_blocking_section();
+  caml_stat_free(p);
+  if (ok && (out.returned.forkattr & ATTR_CMNEXT_CLONEID) &&
+      (out.returned.forkattr & ATTR_CMNEXT_CLONE_REFCNT)) {
+    r = caml_alloc(3, 0);
+    Store_field(r, 0, caml_copy_int64((int64_t)st.st_dev));
+    Store_field(r, 1, caml_copy_int64((int64_t)out.clone_id));
+    Store_field(r, 2, caml_copy_int64((int64_t)out.refcount));
+    CAMLreturn(r);
+  }
+#endif
+  CAMLreturn(Atom(0));
+}
+
+/* clonefile(src, dst): a new file dst sharing src's blocks. Raises
+   Unix_error(EOPNOTSUPP) where there is no clonefile. */
+CAMLprim value packdir_clonefile(value src, value dst) {
+  CAMLparam2(src, dst);
+#ifdef __APPLE__
+  char *s = caml_stat_strdup(String_val(src)), *d = caml_stat_strdup(String_val(dst));
+  int rc;
+  caml_enter_blocking_section();
+  rc = clonefile(s, d, CLONE_NOFOLLOW | CLONE_NOOWNERCOPY);
+  caml_leave_blocking_section();
+  caml_stat_free(s); caml_stat_free(d);
+  if (rc < 0) uerror("clonefile", dst);
+  CAMLreturn(Val_unit);
+#else
+  unix_error(EOPNOTSUPP, "clonefile", dst);
+#endif
+}

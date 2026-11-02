@@ -6,6 +6,14 @@ external sha_final : bytes -> string = "packdir_sha_final"
 external stat_raw : string -> bool -> int64 array = "packdir_stat"
 external utimens : string -> int64 -> int64 -> unit = "packdir_utimens"
 external fullfsync : Unix.file_descr -> unit = "packdir_fullfsync"
+external clone_info_raw : string -> int64 array = "packdir_clone_info"
+external clonefile : string -> string -> unit = "packdir_clonefile"
+
+(* (device, APFS clone id) of a regular file that has whole-file clones, or
+   None: not APFS, not macOS, or no other file shares its clone id. *)
+let clone_key path = match clone_info_raw path with
+  | [| dev; id; refcount |] when refcount > 1L -> Some (dev, id)
+  | _ | exception _ -> None
 
 let block = 1048576
 

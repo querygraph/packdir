@@ -2,8 +2,9 @@
 """Controls across the builds of packdir: every build packs a tree in every
 mode, and every other build must read it, list it and restore it exactly, run
 the same file commands to the same output, carry on from its state and recover
-its crash. Synthetic data only. Pass each build as --build NAME=PATH."""
-import argparse, hashlib, json, os, pathlib, random, shutil, sqlite3, subprocess, sys, tempfile
+its crash; on macOS, the same for a tree of APFS clones packed with --clones.
+Synthetic data only. Pass each build as --build NAME=PATH."""
+import argparse, ctypes, ctypes.util, hashlib, json, os, pathlib, random, shutil, sqlite3, struct, subprocess, sys, tempfile
 
 p = argparse.ArgumentParser()
 p.add_argument('--build', action='append', required=True, help='NAME=PATH')
@@ -126,5 +127,116 @@ with tempfile.TemporaryDirectory(prefix='packdir-cross-') as td:
         r = json.loads(tool(b, 'pack-tree', leaf, out, '--mvcc').splitlines()[-1])
         check(r['stored'] == 1, b + ': then Turso writes it: %r' % r)
         check(tables(c)[1] == (65536, 'delete', 'ok'), b + ': sealed again')
+    # APFS clones (docs/clones.md): every build packs a tree with a clone group
+    # inside one container and one across containers with --clones, in every
+    # mode; the clone tables are one thing whoever wrote them, and every build
+    # verifies, reads, restores (clone ids checked) and carries on from the
+    # result, through a rerun and a changed original.
+    if sys.platform == 'darwin':
+        def clone_src(root):
+            """The same clone tree, bytes and mtimes, each time it is built."""
+            r = random.Random(43)
+            for d in ('lr/0000', 'lr/0001', 'pm/0000'):
+                (root / d).mkdir(parents=True)
+            x = root / 'lr/0000/x'; x.write_bytes(r.randbytes(300000))
+            q = root / 'lr/0001/q'; q.write_bytes(r.randbytes(200000))
+            for s, d in ((x, 'lr/0000/y'), (x, 'pm/0000/x-pm'), (q, 'pm/0000/q-pm')):
+                subprocess.run(['cp', '-c', str(s), str(root / d)], check=True)  # clonefile
+            shutil.copyfile(x, root / 'lr/0000/z')  # identical, not a clone
+            (root / 'pm/0000/plain').write_bytes(b'plain member\n')
+            os.chmod(root / 'lr/0000/y', 0o600)
+            for i, f in enumerate(sorted(p for p in root.rglob('*') if p.is_file())):
+                ns = 1_700_000_000_123_456_789 + i * 1_000_003
+                os.utime(f, ns=(ns, ns))
+            return root
+
+        libc = ctypes.CDLL(ctypes.util.find_library('c'), use_errno=True)
+        class attrlist(ctypes.Structure):
+            _fields_ = [('bitmapcount', ctypes.c_ushort), ('reserved', ctypes.c_ushort), ('commonattr', ctypes.c_uint),
+                        ('volattr', ctypes.c_uint), ('dirattr', ctypes.c_uint), ('fileattr', ctypes.c_uint),
+                        ('forkattr', ctypes.c_uint)]
+        def clone_id(path):
+            """(clone id, refcount): getattrlist(ATTR_CMNEXT_CLONEID | ATTR_CMNEXT_CLONE_REFCNT)."""
+            al = attrlist(5, 0, 0x80000000, 0, 0, 0, 0x100 | 0x1000)  # RETURNED_ATTRS; CLONEID | CLONE_REFCNT
+            buf = ctypes.create_string_buffer(64)
+            if libc.getattrlist(str(path).encode(), ctypes.byref(al), buf, 64, 0x20 | 0x1) != 0:  # CMN_EXTENDED | NOFOLLOW
+                raise OSError(ctypes.get_errno(), str(path))
+            return struct.unpack_from('<QI', buf.raw, 4 + 20)
+
+        def clone_tables(path):
+            db = sqlite3.connect('file:%s?mode=ro' % path, uri=True)
+            out = (db.execute('SELECT name, mode, mtime, sz, original, sha256 FROM packdir_clone ORDER BY name').fetchall(),
+                   db.execute('SELECT name, clone FROM packdir_cloned_by ORDER BY name, clone').fetchall())
+            db.close()
+            return out
+
+        def ids_check(root, seen):
+            gx = clone_id(root / 'lr/0000/x')
+            check(gx[1] == 3 and clone_id(root / 'lr/0000/y')[0] == gx[0] and clone_id(root / 'pm/0000/x-pm')[0] == gx[0],
+                  seen + ': x, y and x-pm are one clone group again')
+            check(clone_id(root / 'pm/0000/q-pm')[0] == clone_id(root / 'lr/0001/q')[0], seen + ': q-pm is a clone of q again')
+            check(clone_id(root / 'lr/0000/z')[1] == 1, seen + ': z stays independent')
+
+        csrc = clone_src(t / 'clone-src')
+        cplain = tree(csrc)
+        x_bytes = (csrc / 'lr/0000/x').read_bytes()
+        creference, after_reference = {}, {}
+        for writer in builds:
+            for mode, flags in MODES.items():
+                out = t / ('clones-%s-%s' % (writer, mode))
+                where = 'clones %s %s' % (writer, mode)
+                r = json.loads(tool(writer, 'pack-tree', csrc, out, '--clones', *flags).splitlines()[-1])
+                check(r['stored'] == 7 and r['clones'] == 3 and r['containers'] == 3, where + ': %r' % r)
+                containers = sorted(out.glob('*/*.sqlar'))
+                # The stored tables, clone tables included, are one thing.
+                for c in containers:
+                    rel = str(c.relative_to(out))
+                    stored, header = tables(c)
+                    check(header == (65536, 'delete', 'ok'), where + ': standard file: %r' % (header,))
+                    check(stored[2] == [('unison-packdir/2',)], where + ': %s is format /2' % rel)
+                    both = (stored, clone_tables(c))
+                    check(creference.setdefault(rel, both) == both, where + ': %s differs from the first build' % rel)
+                check([(n, o) for (n, _, _, _, o, _) in clone_tables(out / 'lr/0000.sqlar')[0]] == [('y', 'x')], where + ': y is a clone of x')
+                stock = t / ('clone-stock-%s-%s' % (writer, mode)); stock.mkdir()
+                subprocess.run(['sqlite3', str(out / 'lr/0000.sqlar'), '-Ax'], cwd=stock, check=True, capture_output=True)
+                check(sorted(os.listdir(stock)) == ['x', 'z'], where + ': stock extraction skips the clone')
+                for reader in builds:
+                    seen = '%s read by %s' % (where, reader)
+                    check(all(l.endswith('members') for l in tool(reader, 'verify', *containers).splitlines()), seen + ': verifies')
+                    for clone in ('lr/0000/y', 'pm/0000/x-pm'):
+                        got = subprocess.run([builds[reader], 'cat', out / clone], capture_output=True, env=env).stdout
+                        check(got == x_bytes, seen + ': cat ' + clone)
+                    target = t / ('clone-restore-%s-%s-%s' % (writer, mode, reader))
+                    u = json.loads(tool(reader, 'unpack-tree', out, target).splitlines()[-1])
+                    check(u == {'containers': 3, 'files': 7, 'cloned': 3, 'copied': 0}, seen + ': unpack-tree %r' % u)
+                    check(tree(target) == cplain, seen + ': restores exactly')
+                    ids_check(target, seen)
+                    r = json.loads(tool(reader, 'pack-tree', csrc, out, '--clones', *flags).splitlines()[-1])
+                    check(r['opened'] == 0 and r['stored'] == 0 and r['clones'] == 0, seen + ': a rerun opens nothing: %r' % r)
+                    # The original changes: its clones get its old bytes first.
+                    work = t / ('clone-work-%s-%s-%s' % (writer, mode, reader))
+                    shutil.copytree(out, work)
+                    wsrc = clone_src(t / ('clone-src-%s-%s-%s' % (writer, mode, reader)))
+                    with open(wsrc / 'lr/0000/x', 'r+b') as f:
+                        f.write(b'changed')
+                    os.utime(wsrc / 'lr/0000/x', ns=(1_800_000_000_000_000_000, 1_800_000_000_000_000_000))
+                    tool(reader, 'pack-tree', wsrc, work, '--clones', *flags)
+                    lr0, pm0 = work / 'lr/0000.sqlar', work / 'pm/0000.sqlar'
+                    check(clone_tables(lr0) == ([], []), seen + ': y materialized and x\'s back-references gone')
+                    check([n for (n, *_) in clone_tables(pm0)[0]] == ['q-pm'], seen + ': x-pm materialized, q-pm still a clone')
+                    got = subprocess.run([builds[reader], 'cat', work / 'lr/0000/y'], capture_output=True, env=env).stdout
+                    check(got == x_bytes, seen + ': y keeps the old bytes')
+                    wcontainers = sorted(work.glob('*/*.sqlar'))
+                    for other in builds:
+                        check(all(l.endswith('members') for l in tool(other, 'verify', *wcontainers).splitlines()),
+                              seen + ': verified by %s after the change' % other)
+                    for c in wcontainers:
+                        rel = str(c.relative_to(work))
+                        both = (tables(c)[0], clone_tables(c))
+                        check(after_reference.setdefault(rel, both) == both, seen + ': %s after the change differs' % rel)
+                    back = t / ('clone-back-%s-%s-%s' % (writer, mode, reader))
+                    u = json.loads(tool(reader, 'unpack-tree', work, back).splitlines()[-1])
+                    check(u == {'containers': 3, 'files': 7, 'cloned': 1, 'copied': 0}, seen + ': unpack after the change %r' % u)
+                    check(tree(back) == tree(wsrc), seen + ': restores the changed tree')
 
 print('PASS%d packdir cross controls (%s)' % (checks, ', '.join(builds)))
