@@ -5,9 +5,9 @@
   <meta name="generator" content="pandoc" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
   <meta name="author" content="Alexy Khrabrov, with Claude as co-author" />
-  <meta name="dcterms.date" content="2026-11-01" />
+  <meta name="dcterms.date" content="2026-11-09" />
   <meta name="description" content="A manual for packdir, which keeps directories of small files as SQLite archives you can still list, read, copy and remove like plain files, with SQLite or Turso, from Rust, OCaml and OxCaml." />
-  <title>SQLite and Turso</title>
+  <title>Clones</title>
   <style>
     div.sitenav { display: flex; flex-direction: row; flex-wrap: wrap; }
     span.navlink { flex: 1; }
@@ -32,6 +32,71 @@
       margin: 0 0.8em 0.2em -1.6em;
       vertical-align: middle;
     }
+    /* CSS for syntax highlighting */
+    html { -webkit-text-size-adjust: 100%; }
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
   </style>
   <link rel="stylesheet" href="book.css" />
 </head>
@@ -47,111 +112,91 @@
 </div>
 <div class="sitenav">
 <span class="navlink">
-<span class="navlink-label">Next:</span> <a href="chapter-008.html" accesskey="n" rel="next">Concurrency</a>
+<span class="navlink-label">Next:</span> <a href="chapter-008.html" accesskey="n" rel="next">SQLite and Turso</a>
 </span>
 <span class="navlink">
 <span class="navlink-label">Previous:</span> <a href="chapter-006.html" accesskey="p" rel="previous">The container format</a>
 </span>
 </div>
 </nav>
-<h1 data-number="6" id="sqlite-and-turso"><span
-class="header-section-number">6</span> SQLite and Turso</h1>
-<p>packdir stores containers with one of two engines, chosen per run.
-They offer different things:</p>
-<table>
-<colgroup>
-<col style="width: 33%" />
-<col style="width: 33%" />
-<col style="width: 33%" />
-</colgroup>
-<thead>
-<tr>
-<th></th>
-<th>SQLite</th>
-<th>Turso</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>What it is</td>
-<td>The standard embedded database</td>
-<td>A Rust rewrite of SQLite, in process</td>
-</tr>
-<tr>
-<td>Maturity</td>
-<td>Decades of production use</td>
-<td>Young; moving quickly</td>
-</tr>
-<tr>
-<td>Journal</td>
-<td>Rollback journal or WAL</td>
-<td>WAL, or its own MVCC log</td>
-</tr>
-<tr>
-<td>Writers in one file</td>
-<td>One at a time</td>
-<td>With MVCC, overlapping transactions</td>
-</tr>
-<tr>
-<td>Auto-vacuum</td>
-<td>Yes</td>
-<td>Experimental, and not safe here</td>
-</tr>
-<tr>
-<td>Stock tools read its files</td>
-<td>Yes</td>
-<td>After sealing, yes</td>
-</tr>
-</tbody>
-</table>
-<p>Turso reads and writes SQLite’s file format, but not every file in
-every state, and the differences have consequences. Each rule below came
-from testing Turso 0.8.3 against stock SQLite, and firstpair-tursolite
-enforces them when a file is opened, for every caller.</p>
-<figure>
-<img src="book/diagrams/engines.svg"
-alt="Which engine may open which file." />
-<figcaption aria-hidden="true">Which engine may open which
-file.</figcaption>
-</figure>
-<p><strong>Turso does not write a file with auto-vacuum.</strong>
-Without the experimental flag it opens such a file read-only. With the
-flag, it wrote, and stock SQLite’s <code>PRAGMA integrity_check</code>
-then reported freelist and pointer-map failures on the result (measured
-on 0.8.2 and 0.8.3). Turso under MVCC refused outright, though not
-before changing the header. So packdir refuses. A write to such a
-container with Turso stops with an error and changes nothing. Reads fall
-to SQLite, and <code>repack --engine turso</code> rebuilds a container
-without auto-vacuum, keeping every member.</p>
-<p><strong>SQLite cannot open a file left in MVCC mode.</strong> MVCC
-sets header bytes 18 and 19 to 255, and stock SQLite reports “file is
-not a database”. So every file Turso writes is <strong>sealed</strong>
-when it closes.</p>
-<p><strong>Turso has no rollback journal.</strong> It ignores
-<code>journal_mode = DELETE</code>. So a Turso write works in WAL or
-MVCC, and sealing puts the standard form back.</p>
-<p><strong>Opening a standard file with Turso changes its
-bytes</strong>, because Turso turns the header to WAL on open. A
-read-only open does not. packdir opens with Turso read-only whenever it
-is only reading.</p>
-<h2 data-number="6.1" id="sealing"><span
-class="header-section-number">6.1</span> Sealing</h2>
-<figure>
-<img src="book/diagrams/seal.svg"
-alt="The life of a file Turso writes." />
-<figcaption aria-hidden="true">The life of a file Turso
-writes.</figcaption>
-</figure>
-<p>Closing a container Turso wrote takes four steps: checkpoint, leave
-MVCC, checkpoint again, and let SQLite return the file to a rollback
-journal. The empty <code>-wal</code> and <code>.db-log</code> files are
-removed. A companion with content in it is an error, because it may hold
-commits. So after a clean run a Turso container is a standard SQLite
-file, apart from having no auto-vacuum, and <code>sqlite3 -Ax</code>
-reads it like any other.</p>
-<p>A crash leaves the file unsealed. That is safe, because Turso
-recovers from its log the next time the file is opened, and closing it
-seals it. Until then only Turso can open it, so a build without Turso
-says it needs Turso.</p>
+<h1 data-number="6" id="clones"><span
+class="header-section-number">6</span> Clones</h1>
+<p>On APFS, <code>cp -c</code> and Finder’s Duplicate make a
+<strong>clone</strong>: a second file that shares the first one’s blocks
+until either is written. A plain copy loses that. Each clone becomes a
+full copy, and the space doubles. Photo libraries are full of them: one
+application’s previews cloned into another’s folder, or the same preview
+shared by two catalogs.</p>
+<p><code>pack-tree --clones</code> keeps them. Before packing, it reads
+each file’s APFS clone ID and refcount. Files in the tree that share a
+clone ID, with a refcount above 1, form a group:</p>
+<ul>
+<li><strong>One member of each group holds the bytes:</strong> the first
+that is already packed, or else the first in path order.</li>
+<li><strong>Every other member is a reference to it,</strong> in its own
+container or another. A reference costs a row, not a copy.</li>
+<li><strong>Files with identical bytes that were not clones stay
+separate.</strong> Only real clones are kept as clones.</li>
+</ul>
+<div class="sourceCode" id="cb1"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">packdir</span> pack-tree photos packed <span class="at">--clones</span></span></code></pre></div>
+<p><code>unpack-tree</code> puts them back as clones. It restores every
+file that holds data first. Then it makes each clone with
+<code>clonefile</code> from its original’s restored file and gives it
+the clone’s own mode and mtime. Its summary line counts both:</p>
+<pre class="text"><code>{&quot;containers&quot;: 3, &quot;files&quot;: 7, &quot;cloned&quot;: 3, &quot;copied&quot;: 0}</code></pre>
+<p>A clone whose original wasn’t restored in the same run, or whose
+destination can’t clone (another volume, a file system other than APFS,
+another system), gets its original’s bytes instead, and counts as
+copied. <code>restore</code> of a single container does the same: clones
+within that container are cloned, and clones of members elsewhere are
+copied.</p>
+<h2 data-number="6.1" id="how-clones-are-stored"><span
+class="header-section-number">6.1</span> How clones are stored</h2>
+<p>A container with clones has two more tables:</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode sql"><code class="sourceCode sql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> packdir_clone(name TEXT <span class="kw">PRIMARY</span> <span class="kw">KEY</span>, <span class="kw">mode</span> <span class="dt">INT</span>, mtime <span class="dt">INT</span>, sz <span class="dt">INT</span>,</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  original TEXT <span class="kw">NOT</span> <span class="kw">NULL</span>, sha256 <span class="dt">BLOB</span> <span class="kw">NOT</span> <span class="kw">NULL</span>);</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> packdir_cloned_by(name TEXT <span class="kw">NOT</span> <span class="kw">NULL</span>, <span class="kw">clone</span> TEXT <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (name, <span class="kw">clone</span>));</span></code></pre></div>
+<ul>
+<li><strong>A clone has a <code>packdir_clone</code> row and no
+<code>sqlar</code> row.</strong> <code>original</code> is the path of
+its original relative to the container’s directory, for example
+<code>../../lr/0000/a_320</code>. Its <code>unison_member</code> row is
+as for any member, so the packed view, <code>ls</code>,
+<code>stat</code>, <code>du</code>, <code>find</code> and Semantic
+Unison see an ordinary file. <code>cat</code> and <code>cp</code> read
+the original’s bytes and check the SHA-256.</li>
+<li><strong>The original’s container lists its clones</strong> in
+<code>packdir_cloned_by</code>. Before anything changes or removes an
+original, its clones get its bytes as <code>sqlar</code> rows of their
+own. That covers a new version stored by <code>pack-tree</code>,
+<code>rm</code>, <code>repack --drop-retained</code>, and a clone whose
+source file stopped being a clone. <code>mv</code> of an original
+rewrites its clones’ references instead. A deleted original kept as
+retained keeps its bytes, so its clones still read.</li>
+<li><strong>The format becomes <code>unison-packdir/2</code></strong> in
+any container with clone rows or back-references. Builds from before
+clones refuse such a container instead of missing its clones. Containers
+without clones stay <code>unison-packdir/1</code>.</li>
+<li><strong><code>verify</code> checks every clone:</strong> its member
+row, that it holds no data of its own, and that its original exists and
+has the same SHA-256.</li>
+</ul>
+<h2 data-number="6.2" id="without-packdir"><span
+class="header-section-number">6.2</span> Without packdir</h2>
+<p>A clone has no row in <code>sqlar</code>, so <code>sqlite3 -Ax</code>
+extracts every other member and skips it. This is deliberate: a member
+with no data would make <code>sqlite3 -Ax</code> stop with “error in
+uncompress()” and extract nothing after it. After extracting each
+container <code>D.sqlar</code> into <code>D/</code>, stock tools bring
+the clones back:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> D</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> <span class="at">-separator</span> <span class="st">$&#39;</span><span class="dt">\t</span><span class="st">&#39;</span> ../D.sqlar <span class="st">&quot;SELECT original, name, mtime FROM packdir_clone&quot;</span> <span class="kw">|</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="cf">while</span> <span class="va">IFS</span><span class="op">=</span><span class="st">$&#39;</span><span class="dt">\t</span><span class="st">&#39;</span> <span class="bu">read</span> <span class="at">-r</span> <span class="va">original</span> <span class="va">name</span> <span class="va">mtime</span><span class="kw">;</span> <span class="cf">do</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cp</span> <span class="at">-c</span> <span class="st">&quot;</span><span class="va">$original</span><span class="st">&quot;</span> <span class="st">&quot;</span><span class="va">$name</span><span class="st">&quot;</span> <span class="kw">&amp;&amp;</span> <span class="fu">touch</span> <span class="at">-t</span> <span class="st">&quot;</span><span class="va">$(</span><span class="fu">date</span> <span class="at">-r</span> <span class="st">&quot;</span><span class="va">$mtime</span><span class="st">&quot;</span> +%Y%m%d%H%M.%S<span class="va">)</span><span class="st">&quot;</span> <span class="st">&quot;</span><span class="va">$name</span><span class="st">&quot;</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="cf">done</span></span></code></pre></div>
+<p><code>cp -c</code> makes a clone where it can and copies
+otherwise.</p>
 </body>
 </html>

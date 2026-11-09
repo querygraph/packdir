@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en-US" xml:lang="en-US">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="author" content="Alexy Khrabrov, with Claude as co-author" />
+  <meta name="dcterms.date" content="2026-11-09" />
+  <meta name="description" content="A manual for packdir, which keeps directories of small files as SQLite archives you can still list, read, copy and remove like plain files, with SQLite or Turso, from Rust, OCaml and OxCaml." />
+  <title>Limits</title>
+  <style>
+    div.sitenav { display: flex; flex-direction: row; flex-wrap: wrap; }
+    span.navlink { flex: 1; }
+    span.navlink-label { display: inline-block; min-width: 4em; }
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: 1.5em;}
+    div.column{flex: auto;}
+    @media screen {
+    div.columns{gap: min(4vw, 1.5em);}
+    div.column{overflow-x: auto;}
+    }
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+  </style>
+  <link rel="stylesheet" href="book.css" />
+</head>
+<body>
+<nav id="sitenav">
+<div class="sitenav">
+<span class="navlink">
+<span class="navlink-label">Up:</span> <a href="chapter-001.html" accesskey="u" rel="up">packdir</a>
+</span>
+<span class="navlink">
+<span class="navlink-label">Top:</span> <a href="index.html" accesskey="t" rel="top">packdir</a>
+</span>
+</div>
+<div class="sitenav">
+<span class="navlink">
+</span>
+<span class="navlink">
+<span class="navlink-label">Previous:</span> <a href="chapter-013.html" accesskey="p" rel="previous">A use case: Semantic Unison</a>
+</span>
+</div>
+</nav>
+<h1 data-number="13" id="limits"><span
+class="header-section-number">13</span> Limits</h1>
+<ul>
+<li><strong>Members are read into memory</strong> while stored. A
+directory of huge files is the wrong shape.</li>
+<li><strong>No compression.</strong> Compress before packing if your
+data would benefit.</li>
+<li><strong>No subdirectories inside a container.</strong> Choose a
+depth so that packed directories are leaves. A subdirectory under one is
+not packed.</li>
+<li><strong>Symbolic links are not stored.</strong> Only regular files
+are members.</li>
+<li><strong>Clones are found only on macOS, on APFS, with
+<code>--clones</code>.</strong> Files packed before
+<code>--clones</code> was used stay as data, even if they are clones;
+only new and changed files are grouped.</li>
+<li><strong>Owners are not stored.</strong> Members show the owner of
+their container.</li>
+<li><strong>One process per Turso database.</strong> Turso locks the
+file, so MVCC’s concurrency is inside one process. Containers are
+separate databases, which is why processes can still work on different
+ones.</li>
+<li><strong>Turso is young.</strong> Its format, its experimental
+features and its MVCC mode are still changing, and 0.8.3 is pinned
+exactly. An upgrade should rerun the tests above. SQLite remains the
+default for that reason.</li>
+<li><strong>Rust and OCaml are separate programs.</strong> A change to
+one needs the same change in the other, and <code>test/cross.py</code>
+is what keeps them honest.</li>
+</ul>
+</body>
+</html>

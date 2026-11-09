@@ -5,7 +5,7 @@
   <meta name="generator" content="pandoc 3.12.1" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
   <meta name="author" content="Alexy Khrabrov, with Claude as co-author" />
-  <meta name="dcterms.date" content="2026-11-01" />
+  <meta name="dcterms.date" content="2026-11-09" />
   <meta name="description" content="A manual for packdir, which keeps directories of small files as SQLite archives you can still list, read, copy and remove like plain files, with SQLite or Turso, from Rust, OCaml and OxCaml." />
   <title>packdir</title>
   <style>
@@ -115,14 +115,15 @@ figcaption { font-size: .88em; font-style: italic; color: #3b5563; margin-top: .
 <p class="subtitle">Small files in one SQLite archive, with GNU
 coreutils on .sqlar</p>
 <p class="author">Alexy Khrabrov, with Claude as co-author</p>
-<p class="date">2026-11-01</p>
+<p class="date">2026-11-09</p>
 </header>
 <nav id="TOC" role="doc-toc">
 <ul>
 <li><a href="#about-this-manual" id="toc-about-this-manual"><span class="toc-section-number">1</span> About this manual</a></li>
 <li><a href="#what-packdir-is" id="toc-what-packdir-is"><span class="toc-section-number">2</span> What packdir is</a>
 <ul>
-<li><a href="#when-to-use-it" id="toc-when-to-use-it"><span class="toc-section-number">2.1</span> When to use it</a></li>
+<li><a href="#where-it-fits" id="toc-where-it-fits"><span class="toc-section-number">2.1</span> Where it fits</a></li>
+<li><a href="#when-to-use-it" id="toc-when-to-use-it"><span class="toc-section-number">2.2</span> When to use it</a></li>
 </ul></li>
 <li><a href="#getting-started" id="toc-getting-started"><span class="toc-section-number">3</span> Getting started</a>
 <ul>
@@ -134,31 +135,36 @@ coreutils on .sqlar</p>
 <li><a href="#file-commands" id="toc-file-commands"><span class="toc-section-number">4.2</span> File commands</a></li>
 </ul></li>
 <li><a href="#the-container-format" id="toc-the-container-format"><span class="toc-section-number">5</span> The container format</a></li>
-<li><a href="#sqlite-and-turso" id="toc-sqlite-and-turso"><span class="toc-section-number">6</span> SQLite and Turso</a>
+<li><a href="#clones" id="toc-clones"><span class="toc-section-number">6</span> Clones</a>
 <ul>
-<li><a href="#sealing" id="toc-sealing"><span class="toc-section-number">6.1</span> Sealing</a></li>
+<li><a href="#how-clones-are-stored" id="toc-how-clones-are-stored"><span class="toc-section-number">6.1</span> How clones are stored</a></li>
+<li><a href="#without-packdir" id="toc-without-packdir"><span class="toc-section-number">6.2</span> Without packdir</a></li>
 </ul></li>
-<li><a href="#concurrency" id="toc-concurrency"><span class="toc-section-number">7</span> Concurrency</a>
+<li><a href="#sqlite-and-turso" id="toc-sqlite-and-turso"><span class="toc-section-number">7</span> SQLite and Turso</a>
 <ul>
-<li><a href="#what-it-buys" id="toc-what-it-buys"><span class="toc-section-number">7.1</span> What it buys</a></li>
-<li><a href="#oxcaml-ocaml-and-rust" id="toc-oxcaml-ocaml-and-rust"><span class="toc-section-number">7.2</span> OxCaml, OCaml and Rust</a></li>
-<li><a href="#a-note-on-fork" id="toc-a-note-on-fork"><span class="toc-section-number">7.3</span> A note on fork</a></li>
+<li><a href="#sealing" id="toc-sealing"><span class="toc-section-number">7.1</span> Sealing</a></li>
 </ul></li>
-<li><a href="#durability-and-recovery" id="toc-durability-and-recovery"><span class="toc-section-number">8</span> Durability and recovery</a>
+<li><a href="#concurrency" id="toc-concurrency"><span class="toc-section-number">8</span> Concurrency</a>
 <ul>
-<li><a href="#tuning" id="toc-tuning"><span class="toc-section-number">8.1</span> Tuning</a></li>
+<li><a href="#what-it-buys" id="toc-what-it-buys"><span class="toc-section-number">8.1</span> What it buys</a></li>
+<li><a href="#oxcaml-ocaml-and-rust" id="toc-oxcaml-ocaml-and-rust"><span class="toc-section-number">8.2</span> OxCaml, OCaml and Rust</a></li>
+<li><a href="#a-note-on-fork" id="toc-a-note-on-fork"><span class="toc-section-number">8.3</span> A note on fork</a></li>
 </ul></li>
-<li><a href="#using-packdir-as-a-library" id="toc-using-packdir-as-a-library"><span class="toc-section-number">9</span> Using packdir as a library</a>
+<li><a href="#durability-and-recovery" id="toc-durability-and-recovery"><span class="toc-section-number">9</span> Durability and recovery</a>
 <ul>
-<li><a href="#from-rust" id="toc-from-rust"><span class="toc-section-number">9.1</span> From Rust</a></li>
-<li><a href="#from-ocaml-and-oxcaml" id="toc-from-ocaml-and-oxcaml"><span class="toc-section-number">9.2</span> From OCaml and OxCaml</a></li>
-<li><a href="#firstpair-tursolite" id="toc-firstpair-tursolite"><span class="toc-section-number">9.3</span> firstpair-tursolite</a></li>
+<li><a href="#tuning" id="toc-tuning"><span class="toc-section-number">9.1</span> Tuning</a></li>
 </ul></li>
-<li><a href="#three-builds-one-behaviour" id="toc-three-builds-one-behaviour"><span class="toc-section-number">10</span> Three builds, one
+<li><a href="#using-packdir-as-a-library" id="toc-using-packdir-as-a-library"><span class="toc-section-number">10</span> Using packdir as a library</a>
+<ul>
+<li><a href="#from-rust" id="toc-from-rust"><span class="toc-section-number">10.1</span> From Rust</a></li>
+<li><a href="#from-ocaml-and-oxcaml" id="toc-from-ocaml-and-oxcaml"><span class="toc-section-number">10.2</span> From OCaml and OxCaml</a></li>
+<li><a href="#firstpair-tursolite" id="toc-firstpair-tursolite"><span class="toc-section-number">10.3</span> firstpair-tursolite</a></li>
+</ul></li>
+<li><a href="#three-builds-one-behaviour" id="toc-three-builds-one-behaviour"><span class="toc-section-number">11</span> Three builds, one
 behaviour</a></li>
-<li><a href="#a-use-case-semantic-unison" id="toc-a-use-case-semantic-unison"><span class="toc-section-number">11</span> A use case: Semantic
+<li><a href="#a-use-case-semantic-unison" id="toc-a-use-case-semantic-unison"><span class="toc-section-number">12</span> A use case: Semantic
 Unison</a></li>
-<li><a href="#limits" id="toc-limits"><span class="toc-section-number">12</span> Limits</a></li>
+<li><a href="#limits" id="toc-limits"><span class="toc-section-number">13</span> Limits</a></li>
 </ul>
 </nav>
 <figure>
@@ -220,7 +226,41 @@ also builds with OxCaml, and one in Rust. Each can be used as a command
 or as a library. Each stores containers with either of two engines,
 SQLite or Turso. Containers written by any combination can be read by
 any other, and stock <code>sqlite3</code> can read them all.</p>
-<h2 data-number="2.1" id="when-to-use-it"><span class="header-section-number">2.1</span> When to use it</h2>
+<h2 data-number="2.1" id="where-it-fits"><span class="header-section-number">2.1</span> Where it fits</h2>
+<p>This book is one of nine on the FirstPair photo tools. Each owns one
+part, and <a href="https://firstpair.org/books/photostack/">The
+FirstPair Photo Stack</a> shows how they fit together.</p>
+<ul>
+<li><strong><a href="https://firstpair.org/books/tiffgraph/">tiffgraph</a></strong>
+walks a TIFF or DNG file’s structure under a fixed grammar and finds its
+editable XMP packet.</li>
+<li><strong><a href="https://firstpair.org/books/phidentify/">phidentify</a></strong>
+computes a photo’s identities: SHA-256, DNG raw blocks, image data,
+Lightroom fingerprint, metadata record and preserved digest.</li>
+<li><strong><a href="https://firstpair.org/books/phindex/">phindex</a></strong> keeps
+those identities for every file of a volume, and aligns two volumes by
+content.</li>
+<li><strong><a href="https://firstpair.org/books/dng-compare/">DNG
+Compare</a></strong> compares pairs and preserves one side byte for byte
+as deltas against the other, with a searchable metadata section, through
+<code>dngc</code>.</li>
+<li><strong><a href="https://firstpair.org/books/semantic-unison/">Semantic
+Unison</a></strong> synchronizes photo trees, sending metadata edits
+without resending image bytes, and preserves what a shuttle disk brings
+into the same archives.</li>
+<li><strong><a href="https://firstpair.org/books/packdir/">packdir</a></strong> keeps
+directories of small files as SQLite archives that still work like plain
+files.</li>
+<li><strong><a href="https://firstpair.org/books/tursolite/">Tursolite</a></strong> is
+the SQLite and Turso layer under packdir, DNG Compare and Mechanic.</li>
+<li><strong><a href="https://firstpair.org/books/diskproxy/">diskproxy</a></strong>
+serves a folder as a virtual disk, such as previews with camera metadata
+spliced in, and captures ratings into sidecars.</li>
+<li><strong><a href="https://firstpair.org/books/lightroom-repair/">Lightroom
+Repair</a></strong> repairs Lightroom Classic catalogs, previews and
+Sync without forging their state.</li>
+</ul>
+<h2 data-number="2.2" id="when-to-use-it"><span class="header-section-number">2.2</span> When to use it</h2>
 <p>packdir suits data that is many small files, read whole, and rarely
 rewritten: preview and thumbnail caches, image tiles, document
 collections, build outputs and scraped pages. It suits slow disks and
@@ -472,9 +512,10 @@ member.</li>
 the raw MD5, with <code>fpalg</code> set to
 <code>unison-md5/1</code>.</li>
 <li><code>unison_container</code> holds <code>format</code>, which is
-<code>unison-packdir/1</code>, and <code>epoch</code>, a counter bumped
-by committed changes. Another program can compare the epoch to notice
-that a container changed.</li>
+<code>unison-packdir/1</code>, or <code>unison-packdir/2</code> when the
+container holds clones (see the next chapter), and <code>epoch</code>, a
+counter bumped by committed changes. Another program can compare the
+epoch to notice that a container changed.</li>
 </ul>
 <p>Containers SQLite creates have <code>auto_vacuum = INCREMENTAL</code>
 and <code>journal_mode = DELETE</code>, so nothing is left beside them
@@ -491,7 +532,82 @@ both builds share. Losing it costs one full re-read.</li>
 barrier.</li>
 <li><code>.packdir-writer.lock</code>: the writer lock.</li>
 </ul>
-<h1 data-number="6" id="sqlite-and-turso"><span class="header-section-number">6</span> SQLite and Turso</h1>
+<h1 data-number="6" id="clones"><span class="header-section-number">6</span> Clones</h1>
+<p>On APFS, <code>cp -c</code> and Finder’s Duplicate make a
+<strong>clone</strong>: a second file that shares the first one’s blocks
+until either is written. A plain copy loses that. Each clone becomes a
+full copy, and the space doubles. Photo libraries are full of them: one
+application’s previews cloned into another’s folder, or the same preview
+shared by two catalogs.</p>
+<p><code>pack-tree --clones</code> keeps them. Before packing, it reads
+each file’s APFS clone ID and refcount. Files in the tree that share a
+clone ID, with a refcount above 1, form a group:</p>
+<ul>
+<li><strong>One member of each group holds the bytes:</strong> the first
+that is already packed, or else the first in path order.</li>
+<li><strong>Every other member is a reference to it,</strong> in its own
+container or another. A reference costs a row, not a copy.</li>
+<li><strong>Files with identical bytes that were not clones stay
+separate.</strong> Only real clones are kept as clones.</li>
+</ul>
+<div class="sourceCode" id="cb9"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="ex">packdir</span> pack-tree photos packed <span class="at">--clones</span></span></code></pre></div>
+<p><code>unpack-tree</code> puts them back as clones. It restores every
+file that holds data first. Then it makes each clone with
+<code>clonefile</code> from its original’s restored file and gives it
+the clone’s own mode and mtime. Its summary line counts both:</p>
+<pre class="text"><code>{&quot;containers&quot;: 3, &quot;files&quot;: 7, &quot;cloned&quot;: 3, &quot;copied&quot;: 0}</code></pre>
+<p>A clone whose original wasn’t restored in the same run, or whose
+destination can’t clone (another volume, a file system other than APFS,
+another system), gets its original’s bytes instead, and counts as
+copied. <code>restore</code> of a single container does the same: clones
+within that container are cloned, and clones of members elsewhere are
+copied.</p>
+<h2 data-number="6.1" id="how-clones-are-stored"><span class="header-section-number">6.1</span> How clones are stored</h2>
+<p>A container with clones has two more tables:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode sql"><code class="sourceCode sql"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> packdir_clone(name TEXT <span class="kw">PRIMARY</span> <span class="kw">KEY</span>, <span class="kw">mode</span> <span class="dt">INT</span>, mtime <span class="dt">INT</span>, sz <span class="dt">INT</span>,</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  original TEXT <span class="kw">NOT</span> <span class="kw">NULL</span>, sha256 <span class="dt">BLOB</span> <span class="kw">NOT</span> <span class="kw">NULL</span>);</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="kw">CREATE</span> <span class="kw">TABLE</span> packdir_cloned_by(name TEXT <span class="kw">NOT</span> <span class="kw">NULL</span>, <span class="kw">clone</span> TEXT <span class="kw">NOT</span> <span class="kw">NULL</span>,</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">PRIMARY</span> <span class="kw">KEY</span> (name, <span class="kw">clone</span>));</span></code></pre></div>
+<ul>
+<li><strong>A clone has a <code>packdir_clone</code> row and no
+<code>sqlar</code> row.</strong> <code>original</code> is the path of
+its original relative to the container’s directory, for example
+<code>../../lr/0000/a_320</code>. Its <code>unison_member</code> row is
+as for any member, so the packed view, <code>ls</code>,
+<code>stat</code>, <code>du</code>, <code>find</code> and Semantic
+Unison see an ordinary file. <code>cat</code> and <code>cp</code> read
+the original’s bytes and check the SHA-256.</li>
+<li><strong>The original’s container lists its clones</strong> in
+<code>packdir_cloned_by</code>. Before anything changes or removes an
+original, its clones get its bytes as <code>sqlar</code> rows of their
+own. That covers a new version stored by <code>pack-tree</code>,
+<code>rm</code>, <code>repack --drop-retained</code>, and a clone whose
+source file stopped being a clone. <code>mv</code> of an original
+rewrites its clones’ references instead. A deleted original kept as
+retained keeps its bytes, so its clones still read.</li>
+<li><strong>The format becomes <code>unison-packdir/2</code></strong> in
+any container with clone rows or back-references. Builds from before
+clones refuse such a container instead of missing its clones. Containers
+without clones stay <code>unison-packdir/1</code>.</li>
+<li><strong><code>verify</code> checks every clone:</strong> its member
+row, that it holds no data of its own, and that its original exists and
+has the same SHA-256.</li>
+</ul>
+<h2 data-number="6.2" id="without-packdir"><span class="header-section-number">6.2</span> Without packdir</h2>
+<p>A clone has no row in <code>sqlar</code>, so <code>sqlite3 -Ax</code>
+extracts every other member and skips it. This is deliberate: a member
+with no data would make <code>sqlite3 -Ax</code> stop with “error in
+uncompress()” and extract nothing after it. After extracting each
+container <code>D.sqlar</code> into <code>D/</code>, stock tools bring
+the clones back:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode sh"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> D</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="ex">sqlite3</span> <span class="at">-separator</span> <span class="st">$&#39;</span><span class="dt">\t</span><span class="st">&#39;</span> ../D.sqlar <span class="st">&quot;SELECT original, name, mtime FROM packdir_clone&quot;</span> <span class="kw">|</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="cf">while</span> <span class="va">IFS</span><span class="op">=</span><span class="st">$&#39;</span><span class="dt">\t</span><span class="st">&#39;</span> <span class="bu">read</span> <span class="at">-r</span> <span class="va">original</span> <span class="va">name</span> <span class="va">mtime</span><span class="kw">;</span> <span class="cf">do</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">cp</span> <span class="at">-c</span> <span class="st">&quot;</span><span class="va">$original</span><span class="st">&quot;</span> <span class="st">&quot;</span><span class="va">$name</span><span class="st">&quot;</span> <span class="kw">&amp;&amp;</span> <span class="fu">touch</span> <span class="at">-t</span> <span class="st">&quot;</span><span class="va">$(</span><span class="fu">date</span> <span class="at">-r</span> <span class="st">&quot;</span><span class="va">$mtime</span><span class="st">&quot;</span> +%Y%m%d%H%M.%S<span class="va">)</span><span class="st">&quot;</span> <span class="st">&quot;</span><span class="va">$name</span><span class="st">&quot;</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="cf">done</span></span></code></pre></div>
+<p><code>cp -c</code> makes a clone where it can and copies
+otherwise.</p>
+<h1 data-number="7" id="sqlite-and-turso"><span class="header-section-number">7</span> SQLite and Turso</h1>
 <p>packdir stores containers with one of two engines, chosen per run.
 They offer different things:</p>
 <table>
@@ -569,7 +685,7 @@ MVCC, and sealing puts the standard form back.</p>
 bytes</strong>, because Turso turns the header to WAL on open. A
 read-only open does not. packdir opens with Turso read-only whenever it
 is only reading.</p>
-<h2 data-number="6.1" id="sealing"><span class="header-section-number">6.1</span> Sealing</h2>
+<h2 data-number="7.1" id="sealing"><span class="header-section-number">7.1</span> Sealing</h2>
 <figure>
 <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAwIDMwMCIgd2lkdGg9IjEwMDAiIGhlaWdodD0iMzAwIiByb2xlPSJpbWciIGZvbnQtZmFtaWx5PSJIZWx2ZXRpY2EsIEFyaWFsLCBzYW5zLXNlcmlmIj48dGl0bGU+VGhlIGxpZmUgb2YgYSBmaWxlIFR1cnNvIHdyaXRlczwvdGl0bGU+PGRlc2M+QSBmaWxlIGVudGVycyBNVkNDLCB0YWtlcyBjb25jdXJyZW50IHRyYW5zYWN0aW9ucywgaXMgY2hlY2twb2ludGVkLCByZXR1cm5zIHRvIFdBTCwgYW5kIFNRTGl0ZSByZXR1cm5zIGl0IHRvIGEgcm9sbGJhY2sgam91cm5hbDsgYSBjcmFzaCBsZWF2ZXMgaXQgaW4gTVZDQyB1bnRpbCB0aGUgbmV4dCBvcGVuLjwvZGVzYz4KPGRlZnM+PG1hcmtlciBpZD0iYSIgdmlld0JveD0iMCAwIDEwIDEwIiByZWZYPSI5IiByZWZZPSI1IiBtYXJrZXJXaWR0aD0iNyIgbWFya2VySGVpZ2h0PSI3IiBvcmllbnQ9ImF1dG8iPjxwYXRoIGQ9Ik0wIDAgTDEwIDUgTDAgMTAgeiIgZmlsbD0iIzNiNTU2MyIvPjwvbWFya2VyPjwvZGVmcz4KPHJlY3Qgd2lkdGg9IjEwMDAiIGhlaWdodD0iMzAwIiBmaWxsPSIjZmZmZmZmIi8+CjxyZWN0IHg9IjIwIiB5PSI0MCIgd2lkdGg9IjE2OCIgaGVpZ2h0PSIxNTAiIHJ4PSI0IiBmaWxsPSIjZWFmMWY0IiBzdHJva2U9IiM3ZmE2YjciIHN0cm9rZS13aWR0aD0iMS41Ii8+Cjx0ZXh0IHg9IjM0IiB5PSI3MiIgZm9udC1zaXplPSIxNiIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iIzE1M2U1MSIgdGV4dC1hbmNob3I9InN0YXJ0Ij5PcGVuPC90ZXh0Pgo8dGV4dCB4PSIzNCIgeT0iMTAyIiBmb250LXNpemU9IjEyLjUiIGZpbGw9IiMxNTNlNTEiIHRleHQtYW5jaG9yPSJzdGFydCIgZm9udC1mYW1pbHk9Ik1lbmxvLCBDb25zb2xhcywgbW9ub3NwYWNlIj5QUkFHTUEgam91cm5hbF9tb2RlPC90ZXh0Pgo8dGV4dCB4PSIzNCIgeT0iMTIyIiBmb250LXNpemU9IjEyLjUiIGZpbGw9IiMxNTNlNTEiIHRleHQtYW5jaG9yPSJzdGFydCIgZm9udC1mYW1pbHk9Ik1lbmxvLCBDb25zb2xhcywgbW9ub3NwYWNlIj49IG12Y2M8L3RleHQ+Cjx0ZXh0IHg9IjM0IiB5PSIxNjQiIGZvbnQtc2l6ZT0iMTMiIGZpbGw9IiMzYjU1NjMiIHRleHQtYW5jaG9yPSJzdGFydCI+aGVhZGVyIDI1NSAyNTU8L3RleHQ+CjxsaW5lIHgxPSIxOTAiIHkxPSIxMTUiIHgyPSIyMTIiIHkyPSIxMTUiIHN0cm9rZT0iIzNiNTU2MyIgc3Ryb2tlLXdpZHRoPSIxLjYiIG1hcmtlci1lbmQ9InVybCgjYSkiLz4KPHJlY3QgeD0iMjE2IiB5PSI0MCIgd2lkdGg9IjE2OCIgaGVpZ2h0PSIxNTAiIHJ4PSI0IiBmaWxsPSIjZWFmMWY0IiBzdHJva2U9IiM3ZmE2YjciIHN0cm9rZS13aWR0aD0iMS41Ii8+Cjx0ZXh0IHg9IjIzMCIgeT0iNzIiIGZvbnQtc2l6ZT0iMTYiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IiMxNTNlNTEiIHRleHQtYW5jaG9yPSJzdGFydCI+V3JpdGU8L3RleHQ+Cjx0ZXh0IHg9IjIzMCIgeT0iMTAyIiBmb250LXNpemU9IjEyLjUiIGZpbGw9IiMxNTNlNTEiIHRleHQtYW5jaG9yPSJzdGFydCIgZm9udC1mYW1pbHk9Ik1lbmxvLCBDb25zb2xhcywgbW9ub3NwYWNlIj5CRUdJTiBDT05DVVJSRU5UPC90ZXh0Pgo8dGV4dCB4PSIyMzAiIHk9IjEyMiIgZm9udC1zaXplPSIxMi41IiBmaWxsPSIjMTUzZTUxIiB0ZXh0LWFuY2hvcj0ic3RhcnQiIGZvbnQtZmFtaWx5PSJNZW5sbywgQ29uc29sYXMsIG1vbm9zcGFjZSI+b25lIGNvbm5lY3Rpb24gZWFjaDwvdGV4dD4KPHRleHQgeD0iMjMwIiB5PSIxNjQiIGZvbnQtc2l6ZT0iMTMiIGZpbGw9IiMzYjU1NjMiIHRleHQtYW5jaG9yPSJzdGFydCI+LmRiLWxvZyBncm93czwvdGV4dD4KPGxpbmUgeDE9IjM4NiIgeTE9IjExNSIgeDI9IjQwOCIgeTI9IjExNSIgc3Ryb2tlPSIjM2I1NTYzIiBzdHJva2Utd2lkdGg9IjEuNiIgbWFya2VyLWVuZD0idXJsKCNhKSIvPgo8cmVjdCB4PSI0MTIiIHk9IjQwIiB3aWR0aD0iMTY4IiBoZWlnaHQ9IjE1MCIgcng9IjQiIGZpbGw9IiNlOGYyZTYiIHN0cm9rZT0iIzdmYTg3NyIgc3Ryb2tlLXdpZHRoPSIxLjUiLz4KPHRleHQgeD0iNDI2IiB5PSI3MiIgZm9udC1zaXplPSIxNiIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iIzE1M2U1MSIgdGV4dC1hbmNob3I9InN0YXJ0Ij5DaGVja3BvaW50PC90ZXh0Pgo8dGV4dCB4PSI0MjYiIHk9IjEwMiIgZm9udC1zaXplPSIxMi41IiBmaWxsPSIjMTUzZTUxIiB0ZXh0LWFuY2hvcj0ic3RhcnQiIGZvbnQtZmFtaWx5PSJNZW5sbywgQ29uc29sYXMsIG1vbm9zcGFjZSI+d2FsX2NoZWNrcG9pbnQ8L3RleHQ+Cjx0ZXh0IHg9IjQyNiIgeT0iMTIyIiBmb250LXNpemU9IjEyLjUiIGZpbGw9IiMxNTNlNTEiIHRleHQtYW5jaG9yPSJzdGFydCIgZm9udC1mYW1pbHk9Ik1lbmxvLCBDb25zb2xhcywgbW9ub3NwYWNlIj4oVFJVTkNBVEUpPC90ZXh0Pgo8dGV4dCB4PSI0MjYiIHk9IjE2NCIgZm9udC1zaXplPSIxMyIgZmlsbD0iIzNiNTU2MyIgdGV4dC1hbmNob3I9InN0YXJ0Ij5hbGwgaW4gdGhlIG1haW4gZmlsZTwvdGV4dD4KPGxpbmUgeDE9IjU4MiIgeTE9IjExNSIgeDI9IjYwNCIgeTI9IjExNSIgc3Ryb2tlPSIjM2I1NTYzIiBzdHJva2Utd2lkdGg9IjEuNiIgbWFya2VyLWVuZD0idXJsKCNhKSIvPgo8cmVjdCB4PSI2MDgiIHk9IjQwIiB3aWR0aD0iMTY4IiBoZWlnaHQ9IjE1MCIgcng9IjQiIGZpbGw9IiNlOGYyZTYiIHN0cm9rZT0iIzdmYTg3NyIgc3Ryb2tlLXdpZHRoPSIxLjUiLz4KPHRleHQgeD0iNjIyIiB5PSI3MiIgZm9udC1zaXplPSIxNiIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iIzE1M2U1MSIgdGV4dC1hbmNob3I9InN0YXJ0Ij5MZWF2ZSBNVkNDPC90ZXh0Pgo8dGV4dCB4PSI2MjIiIHk9IjEwMiIgZm9udC1zaXplPSIxMi41IiBmaWxsPSIjMTUzZTUxIiB0ZXh0LWFuY2hvcj0ic3RhcnQiIGZvbnQtZmFtaWx5PSJNZW5sbywgQ29uc29sYXMsIG1vbm9zcGFjZSI+am91cm5hbF9tb2RlID0gd2FsPC90ZXh0Pgo8dGV4dCB4PSI2MjIiIHk9IjEyMiIgZm9udC1zaXplPSIxMi41IiBmaWxsPSIjMTUzZTUxIiB0ZXh0LWFuY2hvcj0ic3RhcnQiIGZvbnQtZmFtaWx5PSJNZW5sbywgQ29uc29sYXMsIG1vbm9zcGFjZSI+Y2hlY2twb2ludCBhZ2FpbjwvdGV4dD4KPHRleHQgeD0iNjIyIiB5PSIxNjQiIGZvbnQtc2l6ZT0iMTMiIGZpbGw9IiMzYjU1NjMiIHRleHQtYW5jaG9yPSJzdGFydCI+aGVhZGVyIDIgMjwvdGV4dD4KPGxpbmUgeDE9Ijc3OCIgeTE9IjExNSIgeDI9IjgwMCIgeTI9IjExNSIgc3Ryb2tlPSIjM2I1NTYzIiBzdHJva2Utd2lkdGg9IjEuNiIgbWFya2VyLWVuZD0idXJsKCNhKSIvPgo8cmVjdCB4PSI4MDQiIHk9IjQwIiB3aWR0aD0iMTY4IiBoZWlnaHQ9IjE1MCIgcng9IjQiIGZpbGw9IiNmNmYwZTIiIHN0cm9rZT0iI2MwYTE1YSIgc3Ryb2tlLXdpZHRoPSIxLjUiLz4KPHRleHQgeD0iODE4IiB5PSI3MiIgZm9udC1zaXplPSIxNiIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0iIzE1M2U1MSIgdGV4dC1hbmNob3I9InN0YXJ0Ij5TdGFuZGFyZDwvdGV4dD4KPHRleHQgeD0iODE4IiB5PSIxMDIiIGZvbnQtc2l6ZT0iMTIuNSIgZmlsbD0iIzE1M2U1MSIgdGV4dC1hbmNob3I9InN0YXJ0IiBmb250LWZhbWlseT0iTWVubG8sIENvbnNvbGFzLCBtb25vc3BhY2UiPlNRTGl0ZTogam91cm5hbF9tb2RlPC90ZXh0Pgo8dGV4dCB4PSI4MTgiIHk9IjEyMiIgZm9udC1zaXplPSIxMi41IiBmaWxsPSIjMTUzZTUxIiB0ZXh0LWFuY2hvcj0ic3RhcnQiIGZvbnQtZmFtaWx5PSJNZW5sbywgQ29uc29sYXMsIG1vbm9zcGFjZSI+PSBERUxFVEU8L3RleHQ+Cjx0ZXh0IHg9IjgxOCIgeT0iMTY0IiBmb250LXNpemU9IjEzIiBmaWxsPSIjM2I1NTYzIiB0ZXh0LWFuY2hvcj0ic3RhcnQiPmhlYWRlciAxIDE8L3RleHQ+CjxwYXRoIGQ9Ik0gMzAwIDE5MiBDIDMwMCAyNjIsIDExMCAyNjIsIDExMCAxOTQiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzNiNTU2MyIgc3Ryb2tlLXdpZHRoPSIxLjYiIHN0cm9rZS1kYXNoYXJyYXk9IjUgNCIgbWFya2VyLWVuZD0idXJsKCNhKSIvPgo8dGV4dCB4PSIzMjAiIHk9IjI0NiIgZm9udC1zaXplPSIxNSIgZmlsbD0iIzNiNTU2MyIgdGV4dC1hbmNob3I9InN0YXJ0Ij5BIGNyYXNoOiB0aGUgbmV4dCBvcGVuIHJlY292ZXJzIGZyb20gLmRiLWxvZyBhbmQgY2FycmllcyBvbi4gT25seSBUdXJzbyBjYW4gZG8gdGhhdC48L3RleHQ+Cjx0ZXh0IHg9IjMyMCIgeT0iMjcyIiBmb250LXNpemU9IjE1IiBmaWxsPSIjM2I1NTYzIiB0ZXh0LWFuY2hvcj0ic3RhcnQiPkNvbXBhbmlvbnMgYXJlIHJlbW92ZWQgb25seSB3aGVuIGVtcHR5OyBvbmUgd2l0aCBjb250ZW50IGlzIGFuIGVycm9yLCBzaW5jZSBpdCBtYXkgaG9sZCBjb21taXRzLjwvdGV4dD4KPC9zdmc+Cg==" alt="The life of a file Turso writes." />
 <figcaption aria-hidden="true">The life of a file Turso
@@ -586,7 +702,7 @@ reads it like any other.</p>
 recovers from its log the next time the file is opened, and closing it
 seals it. Until then only Turso can open it, so a build without Turso
 says it needs Turso.</p>
-<h1 data-number="7" id="concurrency"><span class="header-section-number">7</span> Concurrency</h1>
+<h1 data-number="8" id="concurrency"><span class="header-section-number">8</span> Concurrency</h1>
 <p>Three different things can run at once, and they are easy to
 confuse:</p>
 <ul>
@@ -619,7 +735,7 @@ batch bumps the epoch in a short transaction of its own, after its data.
 A crash between the two leaves data committed with the epoch one behind.
 packdir’s own recovery does not depend on the epoch: the pending list
 and the file’s identity decide what is checked again.</p>
-<h2 data-number="7.1" id="what-it-buys"><span class="header-section-number">7.1</span> What it buys</h2>
+<h2 data-number="8.1" id="what-it-buys"><span class="header-section-number">8.1</span> What it buys</h2>
 <p>Measured on 2026-11-01 on an iMac Pro with an Intel Xeon W-2191B, on
 its internal SSD, with Turso 0.8.3: a synthetic tree of 1.60 GiB in
 3,840 incompressible files and 64 containers, packing into an empty
@@ -698,7 +814,7 @@ writers that want to be independent, such as long-running services.
 <strong>Unknown:</strong> how MVCC behaves on a large tree on a spinning
 disk. It has not been measured, and the removal of the writer lock may
 hurt there, since it brings back seeks between containers.</p>
-<h2 data-number="7.2" id="oxcaml-ocaml-and-rust"><span class="header-section-number">7.2</span> OxCaml, OCaml and Rust</h2>
+<h2 data-number="8.2" id="oxcaml-ocaml-and-rust"><span class="header-section-number">8.2</span> OxCaml, OCaml and Rust</h2>
 <p>The tier is the same on each language, and it is worth stating
 exactly:</p>
 <table>
@@ -742,11 +858,11 @@ threading library, and packdir acknowledges both and caps
 <p>Where only standard SQLite will do, every build has it: a system
 without a Rust toolchain, a stock OCaml build without the SDK, or a tree
 that other SQLite tools must also write.</p>
-<h2 data-number="7.3" id="a-note-on-fork"><span class="header-section-number">7.3</span> A note on fork</h2>
+<h2 data-number="8.3" id="a-note-on-fork"><span class="header-section-number">8.3</span> A note on fork</h2>
 <p>Using packdir as a library inside a larger OCaml program, you may be
 tempted to fork a worker per container, as the command line does. If the
 parent holds a large heap, tell the child’s collector to stand down:</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode ocaml"><code class="sourceCode ocaml"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="dt">Gc</span>.set { (<span class="dt">Gc</span>.get ()) <span class="kw">with</span> <span class="dt">Gc</span>.space_overhead = <span class="dv">1000000</span> }</span></code></pre></div>
+<div class="sourceCode" id="cb13"><pre class="sourceCode ocaml"><code class="sourceCode ocaml"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="dt">Gc</span>.set { (<span class="dt">Gc</span>.get ()) <span class="kw">with</span> <span class="dt">Gc</span>.space_overhead = <span class="dv">1000000</span> }</span></code></pre></div>
 <p>A forked child inherits the parent’s whole heap, and as it allocates
 file contents its major collector marks all of it, for nothing, since
 the child lives for one job. In one real run, marking took about four
@@ -755,7 +871,7 @@ against 179), with a parent of 6.5 GB. In a synthetic test on a 3.7 GiB
 heap, that one line cut the child’s CPU from 0.63 s to 0.16 s. Rust has
 no such cost, and neither does <code>pack-tree</code> itself, whose
 workers fork early from a small heap.</p>
-<h1 data-number="8" id="durability-and-recovery"><span class="header-section-number">8</span> Durability and recovery</h1>
+<h1 data-number="9" id="durability-and-recovery"><span class="header-section-number">9</span> Durability and recovery</h1>
 <p>packdir keeps these promises, in this order:</p>
 <ol type="1">
 <li><strong>Before storing</strong>, a file is checked to be unchanged
@@ -787,7 +903,7 @@ writers, and the next run, in a different build of packdir, must verify,
 recover and carry on. Another test flips one byte inside a blob and
 expects <code>verify</code> to name the SHA-256 mismatch and the next
 run to set the container aside.</p>
-<h2 data-number="8.1" id="tuning"><span class="header-section-number">8.1</span> Tuning</h2>
+<h2 data-number="9.1" id="tuning"><span class="header-section-number">9.1</span> Tuning</h2>
 <ul>
 <li><code>PACKDIR_SYNC=fullfsync</code> flushes the drive on every
 commit, and <code>normal</code> syncs less often. Both exist for
@@ -798,113 +914,68 @@ large files. A batch is held in memory.</li>
 lock lives in <code>OUT</code>, so separate runs on one disk also take
 turns.</li>
 </ul>
-<h1 data-number="9" id="using-packdir-as-a-library"><span class="header-section-number">9</span> Using packdir as a library</h1>
-<h2 data-number="9.1" id="from-rust"><span class="header-section-number">9.1</span> From Rust</h2>
+<h1 data-number="10" id="using-packdir-as-a-library"><span class="header-section-number">10</span> Using packdir as a library</h1>
+<h2 data-number="10.1" id="from-rust"><span class="header-section-number">10.1</span> From Rust</h2>
 <p>Add packdir as a dependency. Features choose the engines.</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode toml"><code class="sourceCode toml"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[dependencies]</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="dt">packdir</span> <span class="op">=</span> <span class="op">{ </span><span class="dt">git</span><span class="op"> =</span> <span class="st">&quot;https://github.com/querygraph/packdir&quot;</span><span class="op"> }</span></span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="co"># or, without Turso:</span></span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="co"># packdir = { git = &quot;https://github.com/querygraph/packdir&quot;, default-features = false, features = [&quot;sqlite&quot;] }</span></span></code></pre></div>
+<div class="sourceCode" id="cb14"><pre class="sourceCode toml"><code class="sourceCode toml"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">[dependencies]</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="dt">packdir</span> <span class="op">=</span> <span class="op">{ </span><span class="dt">git</span><span class="op"> =</span> <span class="st">&quot;https://github.com/querygraph/packdir&quot;</span><span class="op"> }</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="co"># or, without Turso:</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="co"># packdir = { git = &quot;https://github.com/querygraph/packdir&quot;, default-features = false, features = [&quot;sqlite&quot;] }</span></span></code></pre></div>
 <p>Open a container, bring it up to date with a directory, and read a
 member:</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode rust"><code class="sourceCode rust"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">use</span> <span class="pp">packdir::container::</span><span class="op">{</span>Apply<span class="op">,</span> Container<span class="op">,</span> OpenOptions<span class="op">};</span></span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="kw">use</span> <span class="pp">packdir::tursolite::</span><span class="op">{</span>Engine<span class="op">,</span> Journal<span class="op">};</span></span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> options <span class="op">=</span> OpenOptions <span class="op">{</span></span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>    engine<span class="op">:</span> <span class="cn">Some</span>(<span class="pp">Engine::</span>Turso)<span class="op">,</span></span>
-<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>    journal<span class="op">:</span> <span class="pp">Journal::</span>Mvcc<span class="op">,</span></span>
-<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">..</span><span class="pp">OpenOptions::</span><span class="kw">default</span>()</span>
-<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span>
-<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> c <span class="op">=</span> <span class="pp">Container::</span>open(<span class="st">&quot;leaf.sqlar&quot;</span><span class="op">.</span>as_ref()<span class="op">,</span> <span class="op">&amp;</span>options)<span class="op">?;</span></span>
-<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> apply <span class="op">=</span> Apply <span class="op">{</span> writers<span class="op">:</span> <span class="dv">4</span><span class="op">,</span> <span class="op">..</span><span class="pp">Apply::</span><span class="kw">default</span>() <span class="op">};</span></span>
-<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> (stored<span class="op">,</span> retained<span class="op">,</span> bytes) <span class="op">=</span> c<span class="op">.</span>update(apply<span class="op">,</span> <span class="op">&amp;</span>[]<span class="op">,</span> <span class="st">&quot;plain/leaf&quot;</span>)<span class="op">?;</span></span>
-<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> data <span class="op">=</span> c<span class="op">.</span>read(<span class="st">&quot;a_320&quot;</span>)<span class="op">?;</span></span>
-<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a><span class="pp">assert!</span>(c<span class="op">.</span>verify()<span class="op">?.</span>is_empty())<span class="op">;</span></span>
-<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a>c<span class="op">.</span>close()<span class="op">?;</span> <span class="co">// seals what Turso wrote</span></span></code></pre></div>
+<div class="sourceCode" id="cb15"><pre class="sourceCode rust"><code class="sourceCode rust"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="kw">use</span> <span class="pp">packdir::container::</span><span class="op">{</span>Apply<span class="op">,</span> Container<span class="op">,</span> OpenOptions<span class="op">};</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="kw">use</span> <span class="pp">packdir::tursolite::</span><span class="op">{</span>Engine<span class="op">,</span> Journal<span class="op">};</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> options <span class="op">=</span> OpenOptions <span class="op">{</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>    engine<span class="op">:</span> <span class="cn">Some</span>(<span class="pp">Engine::</span>Turso)<span class="op">,</span></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>    journal<span class="op">:</span> <span class="pp">Journal::</span>Mvcc<span class="op">,</span></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">..</span><span class="pp">OpenOptions::</span><span class="kw">default</span>()</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> c <span class="op">=</span> <span class="pp">Container::</span>open(<span class="st">&quot;leaf.sqlar&quot;</span><span class="op">.</span>as_ref()<span class="op">,</span> <span class="op">&amp;</span>options)<span class="op">?;</span></span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> apply <span class="op">=</span> Apply <span class="op">{</span> writers<span class="op">:</span> <span class="dv">4</span><span class="op">,</span> <span class="op">..</span><span class="pp">Apply::</span><span class="kw">default</span>() <span class="op">};</span></span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> (stored<span class="op">,</span> retained<span class="op">,</span> bytes) <span class="op">=</span> c<span class="op">.</span>update(apply<span class="op">,</span> <span class="op">&amp;</span>[]<span class="op">,</span> <span class="st">&quot;plain/leaf&quot;</span>)<span class="op">?;</span></span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> data <span class="op">=</span> c<span class="op">.</span>read(<span class="st">&quot;a_320&quot;</span>)<span class="op">?;</span></span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a><span class="pp">assert!</span>(c<span class="op">.</span>verify()<span class="op">?.</span>is_empty())<span class="op">;</span></span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>c<span class="op">.</span>close()<span class="op">?;</span> <span class="co">// seals what Turso wrote</span></span></code></pre></div>
 <p>Call <code>close</code>. A container dropped without it is left as
 after a crash, for the next open to recover.</p>
 <p>The crate also exports <code>container::repack</code>,
 <code>container::plan</code>, <code>container::barrier</code>,
 <code>cli::pack_tree</code> for a whole tree, and
 <code>tursolite</code>, the database layer.</p>
-<h2 data-number="9.2" id="from-ocaml-and-oxcaml"><span class="header-section-number">9.2</span> From OCaml and OxCaml</h2>
-<div class="sourceCode" id="cb12"><pre class="sourceCode ocaml"><code class="sourceCode ocaml"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> c = Packdir.Container.open_ ~engine:Tursolite.Turso ~journal:Packdir.Container.Mvcc <span class="st">&quot;leaf.sqlar&quot;</span> <span class="kw">in</span></span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> stored, retained, <span class="dt">bytes</span> = Packdir.Container.update ~writers:<span class="dv">4</span> c <span class="st">&quot;plain/leaf&quot;</span> <span class="kw">in</span></span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> data = Packdir.Container.read c <span class="st">&quot;a_320&quot;</span> <span class="kw">in</span></span>
-<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a><span class="kw">assert</span> (Packdir.Container.verify c = []);</span>
-<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>Packdir.Container.close c</span></code></pre></div>
+<h2 data-number="10.2" id="from-ocaml-and-oxcaml"><span class="header-section-number">10.2</span> From OCaml and OxCaml</h2>
+<div class="sourceCode" id="cb16"><pre class="sourceCode ocaml"><code class="sourceCode ocaml"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> c = Packdir.Container.open_ ~engine:Tursolite.Turso ~journal:Packdir.Container.Mvcc <span class="st">&quot;leaf.sqlar&quot;</span> <span class="kw">in</span></span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> stored, retained, <span class="dt">bytes</span> = Packdir.Container.update ~writers:<span class="dv">4</span> c <span class="st">&quot;plain/leaf&quot;</span> <span class="kw">in</span></span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> data = Packdir.Container.read c <span class="st">&quot;a_320&quot;</span> <span class="kw">in</span></span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a><span class="kw">assert</span> (Packdir.Container.verify c = []);</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>Packdir.Container.close c</span></code></pre></div>
 <p><code>Packdir.Container</code> is the format,
 <code>Packdir.Fileutils</code> the file commands,
 <code>Packdir.Cli</code> the whole command line, and
 <code>Packdir.Native</code> the SHA-256, nanosecond <code>stat</code>,
 <code>utimensat</code> and <code>F_FULLFSYNC</code> calls.</p>
-<h2 data-number="9.3" id="firstpair-tursolite"><span class="header-section-number">9.3</span> firstpair-tursolite</h2>
+<h2 data-number="10.3" id="firstpair-tursolite"><span class="header-section-number">10.3</span> firstpair-tursolite</h2>
 <p>The database layer is its own package, because it has nothing to do
-with archives. It offers one interface over SQLite and Turso, with the
-same shape in Rust and in OCaml:</p>
-<table>
-<colgroup>
-<col style="width: 33%" />
-<col style="width: 33%" />
-<col style="width: 33%" />
-</colgroup>
-<thead>
-<tr>
-<th></th>
-<th>Rust</th>
-<th>OCaml and OxCaml</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Engine and journal</td>
-<td><code>Engine</code>, <code>Journal</code>, <code>Seal</code></td>
-<td><code>engine</code>, <code>journal</code>, <code>seal</code></td>
-</tr>
-<tr>
-<td>Open a file</td>
-<td><code>Database::open</code></td>
-<td><code>open_database</code></td>
-</tr>
-<tr>
-<td>One connection per thread or domain</td>
-<td><code>Database::connect</code></td>
-<td><code>connect</code>, <code>disconnect</code></td>
-</tr>
-<tr>
-<td>Run SQL</td>
-<td><code>query</code>, <code>run</code>, <code>exec</code></td>
-<td><code>query</code>, <code>run</code>, <code>exec</code></td>
-</tr>
-<tr>
-<td>Write, retrying a lost transaction</td>
-<td><code>transaction</code></td>
-<td><code>transaction</code></td>
-</tr>
-<tr>
-<td>Which engine may open a file</td>
-<td><code>resolve</code>, <code>inspect</code></td>
-<td><code>resolve</code>, <code>inspect</code></td>
-</tr>
-<tr>
-<td>Close, sealing what Turso wrote</td>
-<td><code>close</code></td>
-<td><code>close</code></td>
-</tr>
-</tbody>
-</table>
-<p>It also evens out the engines. The bundled SQLite in Rust turns
-foreign keys on by default, and the SQLite an OCaml program links does
-not, so one of packdir’s renames worked in one language and failed in
-the other until the layer set one rule. SQLite’s rollback journal,
-Turso’s WAL and its MVCC all answer to the same call, and
-<code>Journal::Existing</code> leaves a file’s journal alone for
-programs that manage their own.</p>
-<p>The same layer now serves DNG Compare, a photography tool, whose
-databases stay in WAL between runs and use a marker file to say which
-engine owns them. That is what <code>Seal::Wal</code> and
-<code>Journal::Existing</code> are for.</p>
-<h1 data-number="10" id="three-builds-one-behaviour"><span class="header-section-number">10</span> Three builds, one behaviour</h1>
+with archives: <a href="https://github.com/querygraph/tursolite">firstpair-tursolite</a>,
+with its own manual, <a href="https://firstpair.org/books/tursolite/">tursolite</a>, on the same
+shelf. It offers one interface over SQLite and Turso, with the same
+shape in Rust, OCaml, OxCaml and Python: open a file with an engine and
+a journal, take one connection per thread or domain, run SQL, write in
+transactions that a lost MVCC conflict runs again, and close, which
+seals what Turso wrote so stock <code>sqlite3</code> reads it.</p>
+<p>packdir relies on three of its guarantees. Under Turso’s MVCC its
+workers write one container at once. <code>close</code> seals each
+container back to a standard SQLite file, so
+<code>sqlite3 D.sqlar -AxC D</code> works with no packdir installed. And
+the layer sets one rule where the engines differ: foreign keys are off
+on every SQLite connection, because the bundled SQLite in Rust turned
+them on and the system’s did not, and one of packdir’s renames worked in
+one language and failed in the other until then.</p>
+<p>The same layer serves DNG Compare, whose archives stay in WAL between
+runs (<code>Keep_wal</code>, <code>Journal::Existing</code>), and
+Mechanic’s EXIF stub store. The tursolite manual covers the interface,
+the engine rules and their limits.</p>
+<h1 data-number="11" id="three-builds-one-behaviour"><span class="header-section-number">11</span> Three builds, one behaviour</h1>
 <p>“Equivalent” is easy to claim, so here is exactly how it is tested.
 The numbers below are the state of the suites on 2026-11-01.</p>
 <ul>
@@ -944,7 +1015,7 @@ build, and under Turso.</strong> The OCaml build on SQLite treats names
 as bytes. macOS file systems do not allow anything else, so this only
 matters on Linux, and Rust reports such a name as an error rather than
 skipping the file.</p>
-<h1 data-number="11" id="a-use-case-semantic-unison"><span class="header-section-number">11</span> A use case: Semantic Unison</h1>
+<h1 data-number="12" id="a-use-case-semantic-unison"><span class="header-section-number">12</span> A use case: Semantic Unison</h1>
 <p>packdir began as part of <a href="https://github.com/querygraph/semantic-unison">Semantic
 Unison</a>, a fork of the Unison file synchronizer. The problem was a
 photo catalog’s preview cache: 3.6 million small files and about 4.5 TB,
@@ -974,7 +1045,7 @@ heap they had inherited and would never use. packdir’s design decisions
 held. The cost was in how it was being called.</p>
 <p>Nothing in packdir needs Unison. The dependence runs the other
 way.</p>
-<h1 data-number="12" id="limits"><span class="header-section-number">12</span> Limits</h1>
+<h1 data-number="13" id="limits"><span class="header-section-number">13</span> Limits</h1>
 <ul>
 <li><strong>Members are read into memory</strong> while stored. A
 directory of huge files is the wrong shape.</li>
@@ -985,6 +1056,10 @@ depth so that packed directories are leaves. A subdirectory under one is
 not packed.</li>
 <li><strong>Symbolic links are not stored.</strong> Only regular files
 are members.</li>
+<li><strong>Clones are found only on macOS, on APFS, with
+<code>--clones</code>.</strong> Files packed before
+<code>--clones</code> was used stay as data, even if they are clones;
+only new and changed files are grouped.</li>
 <li><strong>Owners are not stored.</strong> Members show the owner of
 their container.</li>
 <li><strong>One process per Turso database.</strong> Turso locks the

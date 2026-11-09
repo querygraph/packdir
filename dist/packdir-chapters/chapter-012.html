@@ -5,9 +5,9 @@
   <meta name="generator" content="pandoc" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
   <meta name="author" content="Alexy Khrabrov, with Claude as co-author" />
-  <meta name="dcterms.date" content="2026-11-01" />
+  <meta name="dcterms.date" content="2026-11-09" />
   <meta name="description" content="A manual for packdir, which keeps directories of small files as SQLite archives you can still list, read, copy and remove like plain files, with SQLite or Turso, from Rust, OCaml and OxCaml." />
-  <title>A use case: Semantic Unison</title>
+  <title>Three builds, one behaviour</title>
   <style>
     div.sitenav { display: flex; flex-direction: row; flex-wrap: wrap; }
     span.navlink { flex: 1; }
@@ -47,44 +47,53 @@
 </div>
 <div class="sitenav">
 <span class="navlink">
-<span class="navlink-label">Next:</span> <a href="chapter-013.html" accesskey="n" rel="next">Limits</a>
+<span class="navlink-label">Next:</span> <a href="chapter-013.html" accesskey="n" rel="next">A use case: Semantic Unison</a>
 </span>
 <span class="navlink">
-<span class="navlink-label">Previous:</span> <a href="chapter-011.html" accesskey="p" rel="previous">Three builds, one behaviour</a>
+<span class="navlink-label">Previous:</span> <a href="chapter-011.html" accesskey="p" rel="previous">Using packdir as a library</a>
 </span>
 </div>
 </nav>
-<h1 data-number="11" id="a-use-case-semantic-unison"><span
-class="header-section-number">11</span> A use case: Semantic Unison</h1>
-<p>packdir began as part of <a
-href="https://github.com/querygraph/semantic-unison">Semantic
-Unison</a>, a fork of the Unison file synchronizer. The problem was a
-photo catalog’s preview cache: 3.6 million small files and about 4.5 TB,
-to be mirrored onto a spinning HFS+ disk. HFS+ has no clones, so copying
-every small file meant writing every one, and each later comparison
-would have to walk them all.</p>
-<p>Semantic Unison’s <strong>packed roots</strong> use packdir as a
-library, and its <code>unison-packdir</code> command is packdir under
-another name. To Unison, a container looks like the directory it
-replaces: three hooks answer <code>stat</code>, directory listing and
-fingerprint from the member table, so update detection needs no change,
-and files are stored as members rather than copied into a temporary and
-renamed. Its archive plays the part <code>.packdir-state</code> plays
-here. The tree becomes 65,536 containers, 4,096 under each of its 16
-top-level directories, averaging about 72 MiB. Files that must stay
-plain sit beside their containers untouched.</p>
-<p>On a 50 GiB test set on that disk, Unison packed the tree in 424 s
-against 337 s for copying plain files with an empty target, and a rerun
-with nothing to do took 3.2 s. So packing cost about a quarter more on
-the first run, and it paid for itself in every run after that. Those
-runs used SQLite, whose writer lock suits one spinning disk.
-<strong>Unknown:</strong> the full mirror’s total time. It was still
-running as this was written, at 100 to 135 MB/s.</p>
-<p>That run is also where the note on fork came from. The mirror slowed
-by a quarter part way through, and the profile showed workers marking a
-heap they had inherited and would never use. packdir’s design decisions
-held. The cost was in how it was being called.</p>
-<p>Nothing in packdir needs Unison. The dependence runs the other
-way.</p>
+<h1 data-number="11" id="three-builds-one-behaviour"><span
+class="header-section-number">11</span> Three builds, one behaviour</h1>
+<p>“Equivalent” is easy to claim, so here is exactly how it is tested.
+The numbers below are the state of the suites on 2026-11-01.</p>
+<ul>
+<li><strong><code>test/controls.py</code></strong> (92 checks) packs a
+tree in the layout of a preview cache and checks incremental runs, a
+crash inside a transaction, corruption, plain directories beside
+containers, repack and unpack. It restores with stock
+<code>sqlite3</code> as well as packdir.</li>
+<li><strong><code>test/fileutils.py</code></strong> (58 checks) runs
+each file command on a packed tree, and GNU’s on the same tree unpacked,
+and compares output, exit codes and messages.</li>
+<li><strong><code>test/cross.py</code></strong> (452 checks) is the one
+that proves equivalence. Stock OCaml, OxCaml and Rust each pack a tree
+in each mode: SQLite, Turso, MVCC, and MVCC with writers. Every other
+build must then verify it, restore it exactly and carry on from its
+state with nothing to do. Stored tables must be the same in every
+combination, and the file commands must print the same. A crash in one
+build is recovered by another.</li>
+<li><strong><code>tests/matrix.rs</code> and
+<code>ocaml/test/matrix.ml</code></strong> in firstpair-tursolite test
+each engine and journal, the guards between them, and concurrent writers
+losing nothing, in both languages.</li>
+<li><strong><code>rust/tests/library.rs</code></strong> uses packdir as
+a Rust project would.</li>
+</ul>
+<p>The controls and file suites pass on all three builds, on both
+engines, and the controls also under MVCC with concurrent writers, where
+the three checks for the plain WAL variant do not apply.</p>
+<p>The suites found real differences on the way: the foreign-key default
+above, and SHA-256 speed, since the Rust crate’s hash was slower than
+the system’s on a CPU without SHA instructions, so on macOS Rust now
+uses the same system routine as OCaml. The shared
+<code>.packdir-state</code> also began as an OCaml-only binary format,
+which would have made every Rust run after an OCaml run start over.</p>
+<p>One difference remains. <strong>File names must be UTF-8 in the Rust
+build, and under Turso.</strong> The OCaml build on SQLite treats names
+as bytes. macOS file systems do not allow anything else, so this only
+matters on Linux, and Rust reports such a name as an error rather than
+skipping the file.</p>
 </body>
 </html>

@@ -5,7 +5,7 @@
   <meta name="generator" content="pandoc" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
   <meta name="author" content="Alexy Khrabrov, with Claude as co-author" />
-  <meta name="dcterms.date" content="2026-11-01" />
+  <meta name="dcterms.date" content="2026-11-09" />
   <meta name="description" content="A manual for packdir, which keeps directories of small files as SQLite archives you can still list, read, copy and remove like plain files, with SQLite or Turso, from Rust, OCaml and OxCaml." />
   <title>The container format</title>
   <style>
@@ -112,7 +112,7 @@
 </div>
 <div class="sitenav">
 <span class="navlink">
-<span class="navlink-label">Next:</span> <a href="chapter-007.html" accesskey="n" rel="next">SQLite and Turso</a>
+<span class="navlink-label">Next:</span> <a href="chapter-007.html" accesskey="n" rel="next">Clones</a>
 </span>
 <span class="navlink">
 <span class="navlink-label">Previous:</span> <a href="chapter-005.html" accesskey="p" rel="previous">Commands</a>
@@ -143,9 +143,10 @@ member.</li>
 the raw MD5, with <code>fpalg</code> set to
 <code>unison-md5/1</code>.</li>
 <li><code>unison_container</code> holds <code>format</code>, which is
-<code>unison-packdir/1</code>, and <code>epoch</code>, a counter bumped
-by committed changes. Another program can compare the epoch to notice
-that a container changed.</li>
+<code>unison-packdir/1</code>, or <code>unison-packdir/2</code> when the
+container holds clones (see the next chapter), and <code>epoch</code>, a
+counter bumped by committed changes. Another program can compare the
+epoch to notice that a container changed.</li>
 </ul>
 <p>Containers SQLite creates have <code>auto_vacuum = INCREMENTAL</code>
 and <code>journal_mode = DELETE</code>, so nothing is left beside them

@@ -5,7 +5,7 @@
   <meta name="generator" content="pandoc" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
   <meta name="author" content="Alexy Khrabrov, with Claude as co-author" />
-  <meta name="dcterms.date" content="2026-11-01" />
+  <meta name="dcterms.date" content="2026-11-09" />
   <meta name="description" content="A manual for packdir, which keeps directories of small files as SQLite archives you can still list, read, copy and remove like plain files, with SQLite or Turso, from Rust, OCaml and OxCaml." />
   <title>packdir</title>
   <style>
@@ -56,7 +56,7 @@
 <p class="subtitle">Small files in one SQLite archive, with GNU
 coreutils on .sqlar</p>
 <p class="author">Alexy Khrabrov, with Claude as co-author</p>
-<p class="date">2026-11-01</p>
+<p class="date">2026-11-09</p>
 </header>
 <nav id="TOC" role="doc-toc">
 <ul>
@@ -67,8 +67,11 @@ About this manual</a></li>
 id="toc-what-packdir-is"><span class="toc-section-number">2</span> What
 packdir is</a>
 <ul>
+<li><a href="chapter-003.html#where-it-fits"
+id="toc-where-it-fits"><span class="toc-section-number">2.1</span> Where
+it fits</a></li>
 <li><a href="chapter-003.html#when-to-use-it"
-id="toc-when-to-use-it"><span class="toc-section-number">2.1</span> When
+id="toc-when-to-use-it"><span class="toc-section-number">2.2</span> When
 to use it</a></li>
 </ul></li>
 <li><a href="chapter-004.html#getting-started"
@@ -91,55 +94,65 @@ commands</a></li>
 <li><a href="chapter-006.html#the-container-format"
 id="toc-the-container-format"><span class="toc-section-number">5</span>
 The container format</a></li>
-<li><a href="chapter-007.html#sqlite-and-turso"
-id="toc-sqlite-and-turso"><span class="toc-section-number">6</span>
+<li><a href="chapter-007.html#clones" id="toc-clones"><span
+class="toc-section-number">6</span> Clones</a>
+<ul>
+<li><a href="chapter-007.html#how-clones-are-stored"
+id="toc-how-clones-are-stored"><span
+class="toc-section-number">6.1</span> How clones are stored</a></li>
+<li><a href="chapter-007.html#without-packdir"
+id="toc-without-packdir"><span class="toc-section-number">6.2</span>
+Without packdir</a></li>
+</ul></li>
+<li><a href="chapter-008.html#sqlite-and-turso"
+id="toc-sqlite-and-turso"><span class="toc-section-number">7</span>
 SQLite and Turso</a>
 <ul>
-<li><a href="chapter-007.html#sealing" id="toc-sealing"><span
-class="toc-section-number">6.1</span> Sealing</a></li>
+<li><a href="chapter-008.html#sealing" id="toc-sealing"><span
+class="toc-section-number">7.1</span> Sealing</a></li>
 </ul></li>
-<li><a href="chapter-008.html#concurrency" id="toc-concurrency"><span
-class="toc-section-number">7</span> Concurrency</a>
+<li><a href="chapter-009.html#concurrency" id="toc-concurrency"><span
+class="toc-section-number">8</span> Concurrency</a>
 <ul>
-<li><a href="chapter-008.html#what-it-buys" id="toc-what-it-buys"><span
-class="toc-section-number">7.1</span> What it buys</a></li>
-<li><a href="chapter-008.html#oxcaml-ocaml-and-rust"
+<li><a href="chapter-009.html#what-it-buys" id="toc-what-it-buys"><span
+class="toc-section-number">8.1</span> What it buys</a></li>
+<li><a href="chapter-009.html#oxcaml-ocaml-and-rust"
 id="toc-oxcaml-ocaml-and-rust"><span
-class="toc-section-number">7.2</span> OxCaml, OCaml and Rust</a></li>
-<li><a href="chapter-008.html#a-note-on-fork"
-id="toc-a-note-on-fork"><span class="toc-section-number">7.3</span> A
+class="toc-section-number">8.2</span> OxCaml, OCaml and Rust</a></li>
+<li><a href="chapter-009.html#a-note-on-fork"
+id="toc-a-note-on-fork"><span class="toc-section-number">8.3</span> A
 note on fork</a></li>
 </ul></li>
-<li><a href="chapter-009.html#durability-and-recovery"
+<li><a href="chapter-010.html#durability-and-recovery"
 id="toc-durability-and-recovery"><span
-class="toc-section-number">8</span> Durability and recovery</a>
+class="toc-section-number">9</span> Durability and recovery</a>
 <ul>
-<li><a href="chapter-009.html#tuning" id="toc-tuning"><span
-class="toc-section-number">8.1</span> Tuning</a></li>
+<li><a href="chapter-010.html#tuning" id="toc-tuning"><span
+class="toc-section-number">9.1</span> Tuning</a></li>
 </ul></li>
-<li><a href="chapter-010.html#using-packdir-as-a-library"
+<li><a href="chapter-011.html#using-packdir-as-a-library"
 id="toc-using-packdir-as-a-library"><span
-class="toc-section-number">9</span> Using packdir as a library</a>
+class="toc-section-number">10</span> Using packdir as a library</a>
 <ul>
-<li><a href="chapter-010.html#from-rust" id="toc-from-rust"><span
-class="toc-section-number">9.1</span> From Rust</a></li>
-<li><a href="chapter-010.html#from-ocaml-and-oxcaml"
+<li><a href="chapter-011.html#from-rust" id="toc-from-rust"><span
+class="toc-section-number">10.1</span> From Rust</a></li>
+<li><a href="chapter-011.html#from-ocaml-and-oxcaml"
 id="toc-from-ocaml-and-oxcaml"><span
-class="toc-section-number">9.2</span> From OCaml and OxCaml</a></li>
-<li><a href="chapter-010.html#firstpair-tursolite"
-id="toc-firstpair-tursolite"><span class="toc-section-number">9.3</span>
-firstpair-tursolite</a></li>
+class="toc-section-number">10.2</span> From OCaml and OxCaml</a></li>
+<li><a href="chapter-011.html#firstpair-tursolite"
+id="toc-firstpair-tursolite"><span
+class="toc-section-number">10.3</span> firstpair-tursolite</a></li>
 </ul></li>
-<li><a href="chapter-011.html#three-builds-one-behaviour"
+<li><a href="chapter-012.html#three-builds-one-behaviour"
 id="toc-three-builds-one-behaviour"><span
-class="toc-section-number">10</span> Three builds, one
+class="toc-section-number">11</span> Three builds, one
 behaviour</a></li>
-<li><a href="chapter-012.html#a-use-case-semantic-unison"
+<li><a href="chapter-013.html#a-use-case-semantic-unison"
 id="toc-a-use-case-semantic-unison"><span
-class="toc-section-number">11</span> A use case: Semantic
+class="toc-section-number">12</span> A use case: Semantic
 Unison</a></li>
-<li><a href="chapter-013.html#limits" id="toc-limits"><span
-class="toc-section-number">12</span> Limits</a></li>
+<li><a href="chapter-014.html#limits" id="toc-limits"><span
+class="toc-section-number">13</span> Limits</a></li>
 </ul>
 </nav>
 
