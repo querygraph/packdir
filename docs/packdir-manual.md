@@ -400,21 +400,11 @@ Packdir.Container.close c
 
 ## firstpair-tursolite
 
-The database layer is its own package, because it has nothing to do with archives. It offers one interface over SQLite and Turso, with the same shape in Rust and in OCaml:
+The database layer is its own package, because it has nothing to do with archives: [firstpair-tursolite](https://github.com/querygraph/tursolite), with its own manual, [tursolite](https://firstpair.org/books/tursolite/), on the same shelf. It offers one interface over SQLite and Turso, with the same shape in Rust, OCaml, OxCaml and Python: open a file with an engine and a journal, take one connection per thread or domain, run SQL, write in transactions that a lost MVCC conflict runs again, and close, which seals what Turso wrote so stock `sqlite3` reads it.
 
-| | Rust | OCaml and OxCaml |
-| --- | --- | --- |
-| Engine and journal | `Engine`, `Journal`, `Seal` | `engine`, `journal`, `seal` |
-| Open a file | `Database::open` | `open_database` |
-| One connection per thread or domain | `Database::connect` | `connect`, `disconnect` |
-| Run SQL | `query`, `run`, `exec` | `query`, `run`, `exec` |
-| Write, retrying a lost transaction | `transaction` | `transaction` |
-| Which engine may open a file | `resolve`, `inspect` | `resolve`, `inspect` |
-| Close, sealing what Turso wrote | `close` | `close` |
+packdir relies on three of its guarantees. Under Turso's MVCC its workers write one container at once. `close` seals each container back to a standard SQLite file, so `sqlite3 D.sqlar -AxC D` works with no packdir installed. And the layer sets one rule where the engines differ: foreign keys are off on every SQLite connection, because the bundled SQLite in Rust turned them on and the system's did not, and one of packdir's renames worked in one language and failed in the other until then.
 
-It also evens out the engines. The bundled SQLite in Rust turns foreign keys on by default, and the SQLite an OCaml program links does not, so one of packdir's renames worked in one language and failed in the other until the layer set one rule. SQLite's rollback journal, Turso's WAL and its MVCC all answer to the same call, and `Journal::Existing` leaves a file's journal alone for programs that manage their own.
-
-The same layer now serves DNG Compare, a photography tool, whose databases stay in WAL between runs and use a marker file to say which engine owns them. That is what `Seal::Wal` and `Journal::Existing` are for.
+The same layer serves DNG Compare, whose archives stay in WAL between runs (`Keep_wal`, `Journal::Existing`), and Mechanic's EXIF stub store. The tursolite manual covers the interface, the engine rules and their limits.
 
 # Three builds, one behaviour
 
