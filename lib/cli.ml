@@ -214,7 +214,7 @@ let store_clones root out groups defer ~journal ~engine ~write_lock ~txn_lock ~a
     let cps = List.rev cps in
     match with_container rel (fun c -> Container.apply_clones ~write_lock:txn_lock c cps) with
     | _ -> stored := !stored + List.length cps; kept := !kept + List.length cps
-    | exception Failure e ->
+    | exception (Failure e | Tursolite.Error { message = e; _ }) ->
         Printf.printf "note: clones in %s stored as data (%s)\n%!" rel e;
         store_data rel (List.map (fun (cp : Container.clone_put) -> cp.clone) cps)) clones;
   Hashtbl.fold (fun rel () acc -> rel :: acc) touched [], (!stored, !bytes, !kept)
@@ -361,7 +361,7 @@ let main () =
   (match List.tl (Array.to_list Sys.argv) with
    | cmd :: rest when List.mem_assoc cmd Fileutils.commands ->
        (try (List.assoc cmd Fileutils.commands) rest with
-        | Failure e | Sys_error e -> Fileutils.err "%s" e
+        | Failure e | Sys_error e | Tursolite.Error { message = e; _ } -> Fileutils.err "%s" e
         | Unix.Unix_error (e, f, a) -> Fileutils.err "%s: %s %s" f (Unix.error_message e) a);
        exit !Fileutils.status
    | _ -> ());
@@ -432,5 +432,5 @@ let main () =
         Fun.protect ~finally:(fun () -> Container.close c) (fun () ->
           ignore (Container.restore ~skip_retained:(flag "--skip-retained") c out))
     | _ -> usage ()
-  with Failure e | Sys_error e -> prerr_endline (prog () ^ ": " ^ e); exit 1
+  with Failure e | Sys_error e | Tursolite.Error { message = e; _ } -> prerr_endline (prog () ^ ": " ^ e); exit 1
      | Unix.Unix_error (e, f, a) -> Printf.eprintf "%s: %s: %s %s\n" (prog ()) f (Unix.error_message e) a; exit 1

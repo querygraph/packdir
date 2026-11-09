@@ -436,7 +436,7 @@ let verify c =
         if to_string h <> sha then say "clone SHA-256 differs from its member row";
         (match read c name with
          | d -> if Digest.string d <> to_string fp then say "fingerprint mismatch"
-         | exception Failure m -> problems := m :: !problems
+         | exception (Failure m | T.Error { message = m; _ }) -> problems := m :: !problems
          | exception Not_found -> say ("clone of " ^ original ^ ", which is missing"))
     | _ -> say "no unison_member row") (clones c);
   List.rev !problems

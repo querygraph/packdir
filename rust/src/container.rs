@@ -334,15 +334,16 @@ impl Container {
         // MVCC file Turso must recover.
         let unsealed = t::inspect(path)?.is_some_and(|h| h.mvcc());
         let read_only = o.read_only && resolved == Engine::Turso && !unsealed && !fresh;
-        let db = Database::open(path, &t::Options {
-            engine: resolved,
-            journal: o.journal,
-            page_size: Some(65536),
-            auto_vacuum: fresh && resolved == Engine::Sqlite,
-            read_only,
-            create: o.create,
-            ..t::Options::default()
-        })?;
+        let db = Database::open(
+            path,
+            &t::Options::new()
+                .engine(resolved)
+                .journal(o.journal)
+                .page_size(65536)
+                .auto_vacuum(fresh && resolved == Engine::Sqlite)
+                .read_only(read_only)
+                .create(o.create),
+        )?;
         let c = db.connect()?;
         if !read_only {
             // A rollback journal deleted at each commit; each transaction is
@@ -949,9 +950,9 @@ impl Container {
         };
         let c = self.c();
         self.change(|| {
-            let exists = self.members().map_err(|e| t::Error::new(e.0))?.iter().any(|m| m.name == dst);
+            let exists = self.members().map_err(|e| t::Error::new(t::ErrorKind::Other, e.0))?.iter().any(|m| m.name == dst);
             if exists {
-                return Err(t::Error::new(format!("{dst} exists")));
+                return Err(t::Error::new(t::ErrorKind::Other, format!("{dst} exists")));
             }
             c.run("UPDATE sqlar SET name = ? WHERE name = ?", &[Value::text(dst), Value::text(src)])?;
             c.run("UPDATE unison_member SET name = ? WHERE name = ?", &[Value::text(dst), Value::text(src)])?;
@@ -1122,7 +1123,7 @@ pub fn repack(path: &str, drop_retained: bool, journal: Journal, engine: Option<
                 } else {
                     Vec::new()
                 };
-                let [r] = rows.as_slice() else { return Err(t::Error::new(format!("{}: no data", m.name))) };
+                let [r] = rows.as_slice() else { return Err(t::Error::new(t::ErrorKind::Other, format!("{}: no data", m.name))) };
                 w.run(
                     "INSERT INTO packdir_clone(name, mode, mtime, sz, original, sha256) VALUES (?, ?, ?, ?, ?, ?)",
                     &[Value::text(&m.name), r[0].clone(), r[1].clone(), r[2].clone(), r[3].clone(), r[4].clone()],
