@@ -5,7 +5,7 @@
   <meta name="generator" content="pandoc 3.12.1" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
   <meta name="author" content="Alexy Khrabrov, with Claude as co-author" />
-  <meta name="dcterms.date" content="2026-11-09" />
+  <meta name="dcterms.date" content="2026-11-10" />
   <meta name="description" content="A manual for packdir, which keeps directories of small files as SQLite archives you can still list, read, copy and remove like plain files, with SQLite or Turso, from Rust, OCaml and OxCaml." />
   <title>packdir</title>
   <style>
@@ -115,7 +115,7 @@ figcaption { font-size: .88em; font-style: italic; color: #3b5563; margin-top: .
 <p class="subtitle">Small files in one SQLite archive, with GNU
 coreutils on .sqlar</p>
 <p class="author">Alexy Khrabrov, with Claude as co-author</p>
-<p class="date">2026-11-09</p>
+<p class="date">2026-11-10</p>
 </header>
 <nav id="TOC" role="doc-toc">
 <ul>
@@ -236,18 +236,22 @@ walks a TIFF or DNG file’s structure under a fixed grammar and finds its
 editable XMP packet.</li>
 <li><strong><a href="https://firstpair.org/books/phidentify/">phidentify</a></strong>
 computes a photo’s identities: SHA-256, DNG raw blocks, image data,
-Lightroom fingerprint, metadata record and preserved digest.</li>
+block marks, Lightroom fingerprint, metadata record and preserved
+digest, and the skeleton that rebuilds a file from an edited copy.</li>
 <li><strong><a href="https://firstpair.org/books/phindex/">phindex</a></strong> keeps
-those identities for every file of a volume, and aligns two volumes by
-content.</li>
+those identities and a skeleton for every file of a volume, aligns two
+volumes by content, and restores a file as it was before a metadata
+edit.</li>
 <li><strong><a href="https://firstpair.org/books/dng-compare/">DNG
 Compare</a></strong> compares pairs and preserves one side byte for byte
-as deltas against the other, with a searchable metadata section, through
+as deltas against the other, restorable even after the other side is
+edited, with a searchable metadata section, through
 <code>dngc</code>.</li>
 <li><strong><a href="https://firstpair.org/books/semantic-unison/">Semantic
 Unison</a></strong> synchronizes photo trees, sending metadata edits
-without resending image bytes, and preserves what a shuttle disk brings
-into the same archives.</li>
+without resending image bytes, keeps the versions it replaces as small
+skeletons, and preserves what a shuttle disk brings into the same
+archives.</li>
 <li><strong><a href="https://firstpair.org/books/packdir/">packdir</a></strong> keeps
 directories of small files as SQLite archives that still work like plain
 files.</li>
